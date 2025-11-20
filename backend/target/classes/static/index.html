@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HPCL Procurement System - Backend</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #003366 0%, #001F3F 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        h1 {
+            color: #FFB400;
+            margin-bottom: 10px;
+            font-size: 2.5rem;
+        }
+
+        .subtitle {
+            color: #E4002B;
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+            font-weight: 600;
+        }
+
+        .status {
+            display: inline-block;
+            background: #28A745;
+            color: white;
+            padding: 8px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            margin-bottom: 30px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .info-card {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-left: 4px solid #FFB400;
+        }
+
+        .info-card h3 {
+            color: #FFB400;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+
+        .endpoint {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-family: 'Courier New', monospace;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .endpoint:last-child {
+            margin-bottom: 0;
+        }
+
+        .endpoint code {
+            color: #4FC3F7;
+            font-size: 0.95rem;
+        }
+
+        .endpoint a {
+            background: #E4002B;
+            color: white;
+            padding: 6px 15px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: background 0.3s;
+        }
+
+        .endpoint a:hover {
+            background: #C60024;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .feature {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .feature-icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        .feature-text {
+            font-size: 0.9rem;
+            color: #E9ECEF;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            color: #CED4DA;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏭 HPCL Procurement System</h1>
+        <div class="subtitle">Backend API Server</div>
+        
+        <div class="status">✅ Server is Running</div>
+
+        <div class="info-card">
+            <h3>📡 API Endpoints</h3>
+            <div class="endpoint">
+                <code>GET /api/health</code>
+                <a href="/api/health" target="_blank">Test</a>
+            </div>
+            <div class="endpoint">
+                <code>GET /api/</code>
+                <a href="/api/" target="_blank">Info</a>
+            </div>
+            <div class="endpoint">
+                <code>GET /h2-console</code>
+                <a href="/h2-console" target="_blank">Database</a>
+            </div>
+        </div>
+
+        <div class="info-card">
+            <h3>🗄️ Database Configuration</h3>
+            <div class="endpoint">
+                <code>JDBC URL: jdbc:h2:mem:hpcl_procurement</code>
+            </div>
+            <div class="endpoint">
+                <code>Username: sa</code>
+            </div>
+            <div class="endpoint">
+                <code>Password: password</code>
+            </div>
+        </div>
+
+        <div class="info-card">
+            <h3>⚡ System Features</h3>
+            <div class="features">
+                <div class="feature">
+                    <div class="feature-icon">🗂️</div>
+                    <div class="feature-text">H2 Database</div>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">🔄</div>
+                    <div class="feature-text">Flyway Migration</div>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">🍃</div>
+                    <div class="feature-text">Spring Boot 3.2</div>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">☕</div>
+                    <div class="feature-text">Java 17</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-card">
+            <h3>🎨 Frontend Application</h3>
+            <div class="endpoint">
+                <code>React App running on port 3001</code>
+                <a href="http://localhost:3001" target="_blank">Open</a>
+            </div>
+        </div>
+
+        <footer>
+            <p>HPCL Procurement Automation System v1.0.0</p>
+            <p>Powered by Spring Boot | Developed for Digital Transformation</p>
+        </footer>
+    </div>
+</body>
+</html>

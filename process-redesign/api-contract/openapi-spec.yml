@@ -1,0 +1,1409 @@
+openapi: 3.0.3
+info:
+  title: HPCL Procurement Automation System API
+  description: |
+    REST API for the HPCL Procurement Automation System, providing endpoints for:
+    - Purchase Request (PR) management
+    - Tender management and bid evaluation
+    - Rule engine and CVC compliance checks
+    - Document intelligence (OCR/NLP)
+    - SAP ERP integration
+    - Exception handling and escalations
+    
+    **Authentication**: All endpoints require JWT Bearer token authentication.
+    
+    **Base URL**: `http://localhost:8080/api`
+    
+    **Rate Limiting**: 1000 requests per hour per user
+  version: 1.0.0
+  contact:
+    name: HPCL Digital Transformation Team
+    email: procurement-support@hpcl.co.in
+  license:
+    name: Proprietary
+    url: https://www.hindustanpetroleum.com
+
+servers:
+  - url: http://localhost:8080/api
+    description: Development server (local)
+  - url: https://dev-procurement.hpcl.co.in/api
+    description: Development environment
+  - url: https://uat-procurement.hpcl.co.in/api
+    description: UAT environment
+  - url: https://procurement.hpcl.co.in/api
+    description: Production environment
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Purchase Requests
+    description: PR creation, approval, and lifecycle management
+  - name: Tenders
+    description: Tender publication, bid collection, and evaluation
+  - name: Approvals
+    description: Approval workflows and inbox management
+  - name: Rule Engine
+    description: CVC compliance and business rule validation
+  - name: Document Intelligence
+    description: OCR, NLP, and document verification
+  - name: SAP Integration
+    description: SAP ERP synchronization and data exchange
+  - name: Exceptions
+    description: Exception handling and escalations
+  - name: Analytics
+    description: Reports and dashboard metrics
+
+paths:
+  # ============================================================================
+  # PURCHASE REQUEST ENDPOINTS
+  # ============================================================================
+  /pr:
+    post:
+      tags:
+        - Purchase Requests
+      summary: Create a new Purchase Request
+      description: |
+        Initiates a new PR and triggers the BPMN workflow (`pr_to_po.bpmn`).
+        Auto-classifies the PR category using ML, checks budget availability in SAP,
+        and applies CVC compliance rules.
+      operationId: createPR
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePRRequest'
+            example:
+              description: "5 Dell Laptops for IT Department"
+              category: "IT_HARDWARE"
+              estimatedValue: 250000
+              department: "IT"
+              costCenter: "CC-IT-1001"
+              requiredByDate: "2025-12-20"
+              justification: "Replace 5-year-old laptops for IT team. Windows 11 upgrade required."
+              urgency: "NORMAL"
+              vendorCode: "VENDOR-DELL-001"
+      responses:
+        '201':
+          description: PR created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PRResponse'
+              example:
+                prId: "PR-2025-05-001"
+                status: "PENDING_MANAGER_APPROVAL"
+                processInstanceId: "camunda-12345-abcde"
+                createdAt: "2025-11-20T10:00:00Z"
+                estimatedApprovalTime: "6-12 hours"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      tags:
+        - Purchase Requests
+      summary: List all Purchase Requests
+      description: Retrieves PRs with filtering and pagination
+      operationId: listPRs
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, COMPLETED]
+        - name: department
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of PRs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PRSummary'
+                  totalElements:
+                    type: integer
+                  totalPages:
+                    type: integer
+
+  /pr/{prId}:
+    get:
+      tags:
+        - Purchase Requests
+      summary: Get PR details
+      operationId: getPR
+      parameters:
+        - name: prId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "PR-2025-05-001"
+      responses:
+        '200':
+          description: PR details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PRDetailResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /pr/{prId}/approve:
+    post:
+      tags:
+        - Approvals
+      summary: Approve a Purchase Request
+      operationId: approvePR
+      parameters:
+        - name: prId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comments:
+                  type: string
+                  maxLength: 500
+              example:
+                comments: "Approved. Budget allocated."
+      responses:
+        '200':
+          description: PR approved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  prId:
+                    type: string
+                  status:
+                    type: string
+                  nextApprover:
+                    type: string
+                    nullable: true
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /pr/{prId}/reject:
+    post:
+      tags:
+        - Approvals
+      summary: Reject a Purchase Request
+      operationId: rejectPR
+      parameters:
+        - name: prId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  minLength: 10
+                  maxLength: 500
+              example:
+                reason: "Insufficient budget. Defer to next quarter."
+      responses:
+        '200':
+          description: PR rejected
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ============================================================================
+  # TENDER ENDPOINTS
+  # ============================================================================
+  /tender:
+    post:
+      tags:
+        - Tenders
+      summary: Create a new Tender
+      operationId: createTender
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTenderRequest'
+      responses:
+        '201':
+          description: Tender created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenderResponse'
+
+  /tender/{tenderId}/publish:
+    post:
+      tags:
+        - Tenders
+      summary: Publish tender to CPPP, GeM, and vendor emails
+      description: Triggers `tender_flow.bpmn` workflow to publish tender
+      operationId: publishTender
+      parameters:
+        - name: tenderId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                publishToCPPP:
+                  type: boolean
+                  default: true
+                publishToGeM:
+                  type: boolean
+                  default: true
+                emailVendors:
+                  type: boolean
+                  default: true
+                vendorEmailList:
+                  type: array
+                  items:
+                    type: string
+                    format: email
+      responses:
+        '200':
+          description: Tender published successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenderId:
+                    type: string
+                  status:
+                    type: string
+                  publicationChannels:
+                    type: array
+                    items:
+                      type: string
+                  bidDeadline:
+                    type: string
+                    format: date-time
+
+  /tender/{tenderId}/bids:
+    get:
+      tags:
+        - Tenders
+      summary: Get all bids for a tender
+      operationId: getTenderBids
+      parameters:
+        - name: tenderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of bids
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalBids:
+                    type: integer
+                  bids:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BidSummary'
+
+  /tender/{tenderId}/evaluate:
+    post:
+      tags:
+        - Tenders
+      summary: Start bid evaluation workflow
+      description: Triggers `bid_evaluation.bpmn` workflow with OCR → ML scoring → committee approval
+      operationId: evaluateTenderBids
+      parameters:
+        - name: tenderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '202':
+          description: Evaluation started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  evaluationId:
+                    type: string
+                  status:
+                    type: string
+                  estimatedCompletionTime:
+                    type: string
+
+  /tender/{tenderId}/evaluation-results:
+    get:
+      tags:
+        - Tenders
+      summary: Get bid evaluation results
+      operationId: getEvaluationResults
+      parameters:
+        - name: tenderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Evaluation results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResultResponse'
+
+  /tender/{tenderId}/award:
+    post:
+      tags:
+        - Tenders
+      summary: Award tender to winning bidder
+      operationId: awardTender
+      parameters:
+        - name: tenderId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - winningBidId
+              properties:
+                winningBidId:
+                  type: string
+                contractValue:
+                  type: number
+                contractTerms:
+                  type: string
+              example:
+                winningBidId: "BID-023"
+                contractValue: 4200000
+                contractTerms: "Delivery within 30 days. Payment terms: Net 45."
+      responses:
+        '200':
+          description: Tender awarded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenderId:
+                    type: string
+                  contractId:
+                    type: string
+                  status:
+                    type: string
+
+  # ============================================================================
+  # RULE ENGINE ENDPOINTS
+  # ============================================================================
+  /rules/evaluate:
+    post:
+      tags:
+        - Rule Engine
+      summary: Evaluate business rules against PR data
+      description: Executes Drools rule engine with 127 CVC compliance rules
+      operationId: evaluateRules
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleEvaluationRequest'
+      responses:
+        '200':
+          description: Rule evaluation complete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleEvaluationResponse'
+              example:
+                rulesTriggered: 2
+                compliant: true
+                violations: []
+                recommendations:
+                  - ruleId: "CVC-01"
+                    message: "Justification required for purchases >₹1L"
+                    action: "REQUIRE_JUSTIFICATION"
+                  - ruleId: "IT-01"
+                    message: "IT Head approval required for IT hardware >₹2L"
+                    action: "ADD_APPROVER"
+                evaluationTime: "235ms"
+
+  /rules/catalog:
+    get:
+      tags:
+        - Rule Engine
+      summary: Get all available rules
+      operationId: getRuleCatalog
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [CVC_COMPLIANCE, APPROVAL_ROUTING, CATEGORY_SPECIFIC, VENDOR_VALIDATION]
+      responses:
+        '200':
+          description: Rule catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalRules:
+                    type: integer
+                  rules:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Rule'
+
+  /rules:
+    post:
+      tags:
+        - Rule Engine
+      summary: Create a new rule
+      description: Creates a new Drools rule (requires admin role)
+      operationId: createRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRuleRequest'
+      responses:
+        '201':
+          description: Rule created
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ============================================================================
+  # DOCUMENT INTELLIGENCE ENDPOINTS
+  # ============================================================================
+  /document/extract/invoice:
+    post:
+      tags:
+        - Document Intelligence
+      summary: Extract data from invoice using OCR
+      description: Uses Azure Document Intelligence / Tesseract OCR
+      operationId: extractInvoiceData
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Invoice data extracted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvoiceExtractionResponse'
+              example:
+                invoiceNumber: "INV-2025-001"
+                invoiceDate: "2025-11-15"
+                vendorName: "Dell India"
+                vendorGSTIN: "06AABCD1234E1Z5"
+                totalAmount: 250000
+                lineItems:
+                  - description: "Dell Latitude 5420"
+                    quantity: 5
+                    unitPrice: 50000
+                    totalPrice: 250000
+                confidence: 0.94
+                processingTime: "3.2s"
+
+  /document/extract/bid:
+    post:
+      tags:
+        - Document Intelligence
+      summary: Extract data from tender bid
+      operationId: extractBidData
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - tenderId
+              properties:
+                file:
+                  type: string
+                  format: binary
+                tenderId:
+                  type: string
+      responses:
+        '200':
+          description: Bid data extracted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BidExtractionResponse'
+
+  /document/verify/certificate:
+    post:
+      tags:
+        - Document Intelligence
+      summary: Verify vendor certificate (GST, ISO, etc.)
+      operationId: verifyCertificate
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - certificateType
+              properties:
+                file:
+                  type: string
+                  format: binary
+                certificateType:
+                  type: string
+                  enum: [GST, ISO, CVC_FORM_17, INCORPORATION]
+      responses:
+        '200':
+          description: Certificate verification result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  certificateNumber:
+                    type: string
+                  expiryDate:
+                    type: string
+                    format: date
+                  issuer:
+                    type: string
+                  verificationMethod:
+                    type: string
+                  confidence:
+                    type: number
+
+  /document/detect-duplicate:
+    post:
+      tags:
+        - Document Intelligence
+      summary: Detect duplicate invoices
+      operationId: detectDuplicateInvoice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - invoiceNumber
+                - vendorCode
+              properties:
+                invoiceNumber:
+                  type: string
+                vendorCode:
+                  type: string
+                invoiceDate:
+                  type: string
+                  format: date
+                amount:
+                  type: number
+      responses:
+        '200':
+          description: Duplicate detection result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  isDuplicate:
+                    type: boolean
+                  matchedInvoices:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        invoiceId:
+                          type: string
+                        similarity:
+                          type: number
+                        createdAt:
+                          type: string
+                          format: date-time
+
+  # ============================================================================
+  # SAP INTEGRATION ENDPOINTS
+  # ============================================================================
+  /sap/budget-check:
+    post:
+      tags:
+        - SAP Integration
+      summary: Check budget availability in SAP
+      description: Calls SAP BAPI_ACC_BUDGET_CHECK via JCo
+      operationId: checkSAPBudget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetCheckRequest'
+      responses:
+        '200':
+          description: Budget check result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetCheckResponse'
+              example:
+                budgetAvailable: true
+                availableAmount: 1500000
+                allocatedAmount: 250000
+                remainingAmount: 1250000
+                budgetCode: "IT-CAPEX-2025"
+                fiscalYear: "2025"
+                responseTime: "2.8s"
+
+  /sap/vendor/{vendorCode}:
+    get:
+      tags:
+        - SAP Integration
+      summary: Get vendor details from SAP
+      operationId: getSAPVendor
+      parameters:
+        - name: vendorCode
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Vendor details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SAPVendorResponse'
+
+  /sap/create-po:
+    post:
+      tags:
+        - SAP Integration
+      summary: Create Purchase Order in SAP
+      description: Calls SAP BAPI_PO_CREATE1 via JCo
+      operationId: createSAPPO
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePORequest'
+      responses:
+        '201':
+          description: PO created in SAP
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  poNumber:
+                    type: string
+                  sapPONumber:
+                    type: string
+                  status:
+                    type: string
+                  createdAt:
+                    type: string
+                    format: date-time
+              example:
+                poNumber: "PO-2025-05-001"
+                sapPONumber: "4500012345"
+                status: "SYNCED"
+                createdAt: "2025-11-20T15:30:00Z"
+
+  /sap/sync-pr:
+    post:
+      tags:
+        - SAP Integration
+      summary: Sync PR data to SAP
+      operationId: syncPRToSAP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - prId
+              properties:
+                prId:
+                  type: string
+      responses:
+        '200':
+          description: PR synced to SAP
+
+  # ============================================================================
+  # EXCEPTION HANDLING ENDPOINTS
+  # ============================================================================
+  /exception/trigger:
+    post:
+      tags:
+        - Exceptions
+      summary: Trigger exception handling workflow
+      description: Initiates `exception_handling.bpmn` workflow
+      operationId: triggerException
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TriggerExceptionRequest'
+      responses:
+        '202':
+          description: Exception workflow started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exceptionId:
+                    type: string
+                  severity:
+                    type: string
+                  assignedTo:
+                    type: string
+                  slaHours:
+                    type: integer
+
+  /exception/{exceptionId}/resolve:
+    post:
+      tags:
+        - Exceptions
+      summary: Resolve an exception
+      operationId: resolveException
+      parameters:
+        - name: exceptionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - resolution
+              properties:
+                resolution:
+                  type: string
+                  enum: [TERMINATE, OVERRIDE, RETRY, MANUAL_FIX]
+                comments:
+                  type: string
+      responses:
+        '200':
+          description: Exception resolved
+
+  /exception/list:
+    get:
+      tags:
+        - Exceptions
+      summary: List all exceptions
+      operationId: listExceptions
+      parameters:
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [CRITICAL, MAJOR, MINOR]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [UNRESOLVED, IN_PROGRESS, RESOLVED]
+      responses:
+        '200':
+          description: List of exceptions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ExceptionSummary'
+
+  # ============================================================================
+  # ANALYTICS ENDPOINTS
+  # ============================================================================
+  /analytics/dashboard:
+    get:
+      tags:
+        - Analytics
+      summary: Get dashboard metrics
+      operationId: getDashboardMetrics
+      parameters:
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Dashboard metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardMetrics'
+
+# ==============================================================================
+# COMPONENTS
+# ==============================================================================
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from login endpoint
+
+  schemas:
+    CreatePRRequest:
+      type: object
+      required:
+        - description
+        - category
+        - estimatedValue
+        - department
+        - costCenter
+        - requiredByDate
+      properties:
+        description:
+          type: string
+          minLength: 10
+          maxLength: 500
+        category:
+          type: string
+          enum: [IT_HARDWARE, IT_SOFTWARE, FURNITURE, STATIONERY, CONSUMABLES, SERVICES]
+        estimatedValue:
+          type: number
+          minimum: 1
+        department:
+          type: string
+        costCenter:
+          type: string
+        requiredByDate:
+          type: string
+          format: date
+        justification:
+          type: string
+          minLength: 20
+          maxLength: 2000
+        urgency:
+          type: string
+          enum: [NORMAL, HIGH, EMERGENCY]
+          default: NORMAL
+        vendorCode:
+          type: string
+
+    PRResponse:
+      type: object
+      properties:
+        prId:
+          type: string
+        status:
+          type: string
+        processInstanceId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        estimatedApprovalTime:
+          type: string
+
+    PRSummary:
+      type: object
+      properties:
+        prId:
+          type: string
+        description:
+          type: string
+        estimatedValue:
+          type: number
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+
+    PRDetailResponse:
+      type: object
+      properties:
+        prId:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        estimatedValue:
+          type: number
+        department:
+          type: string
+        costCenter:
+          type: string
+        requiredByDate:
+          type: string
+          format: date
+        justification:
+          type: string
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        timeline:
+          type: array
+          items:
+            type: object
+            properties:
+              stage:
+                type: string
+              timestamp:
+                type: string
+                format: date-time
+              actor:
+                type: string
+              comments:
+                type: string
+
+    CreateTenderRequest:
+      type: object
+      required:
+        - title
+        - category
+        - estimatedValue
+        - bidDeadline
+      properties:
+        title:
+          type: string
+        category:
+          type: string
+        estimatedValue:
+          type: number
+        bidDeadline:
+          type: string
+          format: date-time
+        tenderDocument:
+          type: string
+          format: uri
+
+    TenderResponse:
+      type: object
+      properties:
+        tenderId:
+          type: string
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    BidSummary:
+      type: object
+      properties:
+        bidId:
+          type: string
+        vendorName:
+          type: string
+        bidAmount:
+          type: number
+        submittedAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+
+    EvaluationResultResponse:
+      type: object
+      properties:
+        totalBids:
+          type: integer
+        compliantBids:
+          type: integer
+        shortlistedBids:
+          type: array
+          items:
+            type: object
+            properties:
+              bidId:
+                type: string
+              vendorName:
+                type: string
+              bidAmount:
+                type: number
+              mlScore:
+                type: number
+              priceRank:
+                type: integer
+
+    RuleEvaluationRequest:
+      type: object
+      required:
+        - prData
+      properties:
+        prData:
+          type: object
+          properties:
+            prId:
+              type: string
+            category:
+              type: string
+            estimatedValue:
+              type: number
+            department:
+              type: string
+
+    RuleEvaluationResponse:
+      type: object
+      properties:
+        rulesTriggered:
+          type: integer
+        compliant:
+          type: boolean
+        violations:
+          type: array
+          items:
+            type: object
+            properties:
+              ruleId:
+                type: string
+              message:
+                type: string
+              severity:
+                type: string
+        recommendations:
+          type: array
+          items:
+            type: object
+            properties:
+              ruleId:
+                type: string
+              message:
+                type: string
+              action:
+                type: string
+        evaluationTime:
+          type: string
+
+    Rule:
+      type: object
+      properties:
+        ruleId:
+          type: string
+        ruleName:
+          type: string
+        category:
+          type: string
+        description:
+          type: string
+        active:
+          type: boolean
+
+    CreateRuleRequest:
+      type: object
+      required:
+        - ruleName
+        - category
+        - drlContent
+      properties:
+        ruleName:
+          type: string
+        category:
+          type: string
+        drlContent:
+          type: string
+        description:
+          type: string
+
+    InvoiceExtractionResponse:
+      type: object
+      properties:
+        invoiceNumber:
+          type: string
+        invoiceDate:
+          type: string
+          format: date
+        vendorName:
+          type: string
+        vendorGSTIN:
+          type: string
+        totalAmount:
+          type: number
+        lineItems:
+          type: array
+          items:
+            type: object
+            properties:
+              description:
+                type: string
+              quantity:
+                type: integer
+              unitPrice:
+                type: number
+              totalPrice:
+                type: number
+        confidence:
+          type: number
+        processingTime:
+          type: string
+
+    BidExtractionResponse:
+      type: object
+      properties:
+        bidId:
+          type: string
+        vendorName:
+          type: string
+        totalBidAmount:
+          type: number
+        lineItems:
+          type: array
+          items:
+            type: object
+        confidence:
+          type: number
+
+    BudgetCheckRequest:
+      type: object
+      required:
+        - costCenter
+        - amount
+        - fiscalYear
+      properties:
+        costCenter:
+          type: string
+        amount:
+          type: number
+        fiscalYear:
+          type: string
+
+    BudgetCheckResponse:
+      type: object
+      properties:
+        budgetAvailable:
+          type: boolean
+        availableAmount:
+          type: number
+        allocatedAmount:
+          type: number
+        remainingAmount:
+          type: number
+        budgetCode:
+          type: string
+        fiscalYear:
+          type: string
+        responseTime:
+          type: string
+
+    SAPVendorResponse:
+      type: object
+      properties:
+        vendorCode:
+          type: string
+        vendorName:
+          type: string
+        gstNumber:
+          type: string
+        address:
+          type: string
+        contactPerson:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+
+    CreatePORequest:
+      type: object
+      required:
+        - prId
+        - vendorCode
+        - items
+      properties:
+        prId:
+          type: string
+        vendorCode:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              materialCode:
+                type: string
+              quantity:
+                type: integer
+              unitPrice:
+                type: number
+
+    TriggerExceptionRequest:
+      type: object
+      required:
+        - exceptionType
+        - severity
+        - relatedEntity
+      properties:
+        exceptionType:
+          type: string
+          enum: [VENDOR_BLACKLISTED, SAP_SYNC_FAILURE, BUDGET_EXCEEDED, CERTIFICATE_EXPIRED]
+        severity:
+          type: string
+          enum: [CRITICAL, MAJOR, MINOR]
+        relatedEntity:
+          type: string
+        description:
+          type: string
+
+    ExceptionSummary:
+      type: object
+      properties:
+        exceptionId:
+          type: string
+        exceptionType:
+          type: string
+        severity:
+          type: string
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        assignedTo:
+          type: string
+
+    DashboardMetrics:
+      type: object
+      properties:
+        pendingApprovals:
+          type: integer
+        activePRs:
+          type: integer
+        avgCycleTime:
+          type: string
+        completionRate:
+          type: number
+
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+        error:
+          type: string
+        message:
+          type: string
+        path:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
