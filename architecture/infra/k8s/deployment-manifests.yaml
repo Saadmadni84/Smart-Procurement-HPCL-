@@ -1,0 +1,716 @@
+# Kubernetes Deployment Manifests
+# HPCL Procurement Automation System
+# Version: 1.0
+
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hpcl-procurement
+  labels:
+    app: procurement
+    environment: production
+
+---
+# ConfigMap - Application Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: procurement-config
+  namespace: hpcl-procurement
+data:
+  APPLICATION_NAME: "HPCL Procurement"
+  SPRING_PROFILES_ACTIVE: "prod"
+  LOG_LEVEL: "INFO"
+  TZ: "Asia/Kolkata"
+  
+  # Database
+  DB_HOST: "mysql-service.hpcl-procurement.svc.cluster.local"
+  DB_PORT: "3306"
+  DB_NAME: "hpcl_procurement"
+  
+  # Kafka
+  KAFKA_BOOTSTRAP_SERVERS: "kafka-service.hpcl-procurement.svc.cluster.local:9092"
+  
+  # Zeebe
+  ZEEBE_BROKER_CONTACTPOINT: "zeebe-gateway.hpcl-procurement.svc.cluster.local:26500"
+  
+  # Redis
+  REDIS_HOST: "redis-service.hpcl-procurement.svc.cluster.local"
+  REDIS_PORT: "6379"
+  
+  # S3/MinIO
+  S3_ENDPOINT: "https://s3.ap-south-1.amazonaws.com"
+  S3_BUCKET: "hpcl-procurement-documents"
+  
+  # API Gateway
+  API_GATEWAY_URL: "https://api.hpcl-procurement.example.com"
+
+---
+# Secret - Sensitive Configuration
+apiVersion: v1
+kind: Secret
+metadata:
+  name: procurement-secrets
+  namespace: hpcl-procurement
+type: Opaque
+stringData:
+  # Database credentials
+  DB_USERNAME: "hpcl_app_user"
+  DB_PASSWORD: "CHANGE_ME_PRODUCTION_PASSWORD"
+  
+  # JWT signing key
+  JWT_SECRET_KEY: "CHANGE_ME_RS256_PRIVATE_KEY"
+  
+  # SAP credentials
+  SAP_USERNAME: "HPCL_SAP_USER"
+  SAP_PASSWORD: "CHANGE_ME_SAP_PASSWORD"
+  SAP_API_KEY: "CHANGE_ME_SAP_API_KEY"
+  
+  # GeM API credentials
+  GEM_API_KEY: "CHANGE_ME_GEM_API_KEY"
+  GEM_API_SECRET: "CHANGE_ME_GEM_API_SECRET"
+  
+  # eMudhra credentials
+  EMUDHRA_API_KEY: "CHANGE_ME_EMUDHRA_API_KEY"
+  
+  # AWS credentials
+  AWS_ACCESS_KEY_ID: "CHANGE_ME_AWS_ACCESS_KEY"
+  AWS_SECRET_ACCESS_KEY: "CHANGE_ME_AWS_SECRET_KEY"
+
+---
+# Deployment - Procurement API
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: procurement-api
+  namespace: hpcl-procurement
+  labels:
+    app: procurement-api
+    tier: backend
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: procurement-api
+  template:
+    metadata:
+      labels:
+        app: procurement-api
+        tier: backend
+        version: v1.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: procurement-api-sa
+      containers:
+      - name: procurement-api
+        image: harbor.hpcl.com/procurement/procurement-api:1.0.0
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: actuator
+          containerPort: 8081
+          protocol: TCP
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          valueFrom:
+            configMapKeyRef:
+              name: procurement-config
+              key: SPRING_PROFILES_ACTIVE
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: procurement-config
+              key: DB_HOST
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: procurement-secrets
+              key: DB_USERNAME
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: procurement-secrets
+              key: DB_PASSWORD
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          valueFrom:
+            configMapKeyRef:
+              name: procurement-config
+              key: KAFKA_BOOTSTRAP_SERVERS
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: procurement-secrets
+              key: JWT_SECRET_KEY
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8081
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: logs
+          mountPath: /var/log/procurement
+      volumes:
+      - name: logs
+        emptyDir: {}
+      imagePullSecrets:
+      - name: harbor-registry-secret
+
+---
+# Service - Procurement API
+apiVersion: v1
+kind: Service
+metadata:
+  name: procurement-api-service
+  namespace: hpcl-procurement
+  labels:
+    app: procurement-api
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  - name: actuator
+    port: 8081
+    targetPort: 8081
+    protocol: TCP
+  selector:
+    app: procurement-api
+
+---
+# HorizontalPodAutoscaler - Procurement API
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: procurement-api-hpa
+  namespace: hpcl-procurement
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: procurement-api
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 30
+
+---
+# Deployment - SAP Adapter
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sap-adapter
+  namespace: hpcl-procurement
+  labels:
+    app: sap-adapter
+    tier: integration
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sap-adapter
+  template:
+    metadata:
+      labels:
+        app: sap-adapter
+        tier: integration
+    spec:
+      containers:
+      - name: sap-adapter
+        image: harbor.hpcl.com/procurement/sap-adapter:1.0.0
+        ports:
+        - containerPort: 8082
+        env:
+        - name: SAP_HOST
+          value: "sap-prod.hpcl.com"
+        - name: SAP_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: procurement-secrets
+              key: SAP_USERNAME
+        - name: SAP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: procurement-secrets
+              key: SAP_PASSWORD
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          valueFrom:
+            configMapKeyRef:
+              name: procurement-config
+              key: KAFKA_BOOTSTRAP_SERVERS
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8082
+          initialDelaySeconds: 30
+          periodSeconds: 10
+
+---
+# Deployment - Workflow Orchestrator (Zeebe Workers)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workflow-orchestrator
+  namespace: hpcl-procurement
+  labels:
+    app: workflow-orchestrator
+    tier: workflow
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: workflow-orchestrator
+  template:
+    metadata:
+      labels:
+        app: workflow-orchestrator
+        tier: workflow
+    spec:
+      containers:
+      - name: workflow-orchestrator
+        image: harbor.hpcl.com/procurement/workflow-orchestrator:1.0.0
+        env:
+        - name: ZEEBE_BROKER_CONTACTPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: procurement-config
+              key: ZEEBE_BROKER_CONTACTPOINT
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: procurement-config
+              key: DB_HOST
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: procurement-secrets
+              key: DB_USERNAME
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: procurement-secrets
+              key: DB_PASSWORD
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+
+---
+# StatefulSet - MySQL Database
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: hpcl-procurement
+spec:
+  serviceName: mysql-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        ports:
+        - containerPort: 3306
+          name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: procurement-secrets
+              key: DB_PASSWORD
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: procurement-config
+              key: DB_NAME
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: procurement-secrets
+              key: DB_USERNAME
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: procurement-secrets
+              key: DB_PASSWORD
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+        - name: mysql-config
+          mountPath: /etc/mysql/conf.d
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+      volumes:
+      - name: mysql-config
+        configMap:
+          name: mysql-config
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "gp3"
+      resources:
+        requests:
+          storage: 500Gi
+
+---
+# Service - MySQL
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: hpcl-procurement
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+
+---
+# StatefulSet - Kafka
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  namespace: hpcl-procurement
+spec:
+  serviceName: kafka-service
+  replicas: 3
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      containers:
+      - name: kafka
+        image: confluentinc/cp-kafka:7.5.0
+        ports:
+        - containerPort: 9092
+          name: kafka
+        env:
+        - name: KAFKA_BROKER_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: KAFKA_ZOOKEEPER_CONNECT
+          value: "zookeeper-service:2181"
+        - name: KAFKA_ADVERTISED_LISTENERS
+          value: "PLAINTEXT://$(POD_NAME).kafka-service:9092"
+        - name: KAFKA_LISTENERS
+          value: "PLAINTEXT://0.0.0.0:9092"
+        - name: KAFKA_LOG_RETENTION_HOURS
+          value: "168"
+        - name: KAFKA_LOG_RETENTION_BYTES
+          value: "-1"
+        volumeMounts:
+        - name: kafka-storage
+          mountPath: /var/lib/kafka/data
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+  volumeClaimTemplates:
+  - metadata:
+      name: kafka-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "gp3"
+      resources:
+        requests:
+          storage: 200Gi
+
+---
+# Service - Kafka
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-service
+  namespace: hpcl-procurement
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9092
+    targetPort: 9092
+  selector:
+    app: kafka
+  clusterIP: None
+
+---
+# Deployment - Frontend (React)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: procurement-frontend
+  namespace: hpcl-procurement
+  labels:
+    app: procurement-frontend
+    tier: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: procurement-frontend
+  template:
+    metadata:
+      labels:
+        app: procurement-frontend
+        tier: frontend
+    spec:
+      containers:
+      - name: nginx
+        image: harbor.hpcl.com/procurement/procurement-frontend:1.0.0
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+
+---
+# Service - Frontend
+apiVersion: v1
+kind: Service
+metadata:
+  name: procurement-frontend-service
+  namespace: hpcl-procurement
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: procurement-frontend
+
+---
+# Ingress - External Access
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: procurement-ingress
+  namespace: hpcl-procurement
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+spec:
+  tls:
+  - hosts:
+    - procurement.hpcl.com
+    - api.hpcl-procurement.example.com
+    secretName: procurement-tls
+  rules:
+  - host: procurement.hpcl.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: procurement-frontend-service
+            port:
+              number: 80
+  - host: api.hpcl-procurement.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: procurement-api-service
+            port:
+              number: 8080
+
+---
+# PodDisruptionBudget - Procurement API
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: procurement-api-pdb
+  namespace: hpcl-procurement
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: procurement-api
+
+---
+# NetworkPolicy - Restrict Traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: procurement-api-netpol
+  namespace: hpcl-procurement
+spec:
+  podSelector:
+    matchLabels:
+      app: procurement-api
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: procurement-frontend
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: mysql
+    ports:
+    - protocol: TCP
+      port: 3306
+  - to:
+    - podSelector:
+        matchLabels:
+          app: kafka
+    ports:
+    - protocol: TCP
+      port: 9092
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+
+---
+# ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: procurement-api-sa
+  namespace: hpcl-procurement
+
+---
+# Role - Read ConfigMaps and Secrets
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: procurement-api-role
+  namespace: hpcl-procurement
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list"]
+
+---
+# RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: procurement-api-rolebinding
+  namespace: hpcl-procurement
+subjects:
+- kind: ServiceAccount
+  name: procurement-api-sa
+  namespace: hpcl-procurement
+roleRef:
+  kind: Role
+  name: procurement-api-role
+  apiGroup: rbac.authorization.k8s.io

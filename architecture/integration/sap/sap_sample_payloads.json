@@ -1,0 +1,204 @@
+{
+  "sap_po_create_request": {
+    "description": "Sample request for creating Purchase Order in SAP via CPI OData API",
+    "endpoint": "POST https://sap-cpi.hpcl.com/api/v1/purchase-orders",
+    "headers": {
+      "Authorization": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "Content-Type": "application/json",
+      "Idempotency-Key": "PR-2025-05-001-1732189200",
+      "X-Correlation-ID": "550e8400-e29b-41d4-a716-446655440000"
+    },
+    "body": {
+      "externalReference": "PR-2025-05-001",
+      "companyCode": "1000",
+      "documentType": "NB",
+      "purchasingOrganization": "1000",
+      "purchasingGroup": "001",
+      "vendor": "VENDOR-001",
+      "currency": "INR",
+      "documentDate": "2025-11-21",
+      "createdBy": "EMP001",
+      "items": [
+        {
+          "itemNumber": "00010",
+          "materialCode": "MAT-LAP-001",
+          "description": "Dell Latitude 5430 Laptop",
+          "quantity": 5.0,
+          "unitOfMeasure": "EA",
+          "netPrice": 50000.00,
+          "priceUnit": 1,
+          "plant": "1000",
+          "deliveryDate": "2025-12-15",
+          "accountAssignment": {
+            "category": "K",
+            "costCenter": "CC-IT-001",
+            "glAccount": "600100"
+          }
+        }
+      ]
+    }
+  },
+  "sap_po_create_response_success": {
+    "status": 201,
+    "body": {
+      "poNumber": "4500012345",
+      "externalReference": "PR-2025-05-001",
+      "status": "CREATED",
+      "createdAt": "2025-11-21T10:30:00Z",
+      "items": [
+        {
+          "itemNumber": "00010",
+          "sapItemNumber": "00010",
+          "status": "CREATED"
+        }
+      ],
+      "message": "Purchase Order created successfully",
+      "_links": {
+        "self": {"href": "/api/v1/purchase-orders/4500012345"},
+        "update": {"href": "/api/v1/purchase-orders/4500012345"},
+        "status": {"href": "/api/v1/purchase-orders/4500012345/status"}
+      }
+    }
+  },
+  "sap_po_create_response_error_vendor_not_found": {
+    "status": 400,
+    "body": {
+      "error": {
+        "code": "VENDOR_NOT_FOUND",
+        "message": "Vendor VENDOR-001 does not exist in SAP",
+        "details": [
+          {
+            "field": "vendor",
+            "value": "VENDOR-001",
+            "issue": "Vendor master data not found in table LFA1"
+          }
+        ],
+        "suggestedAction": "Create vendor master data in SAP or use an existing vendor code"
+      },
+      "timestamp": "2025-11-21T10:30:00Z",
+      "correlationId": "550e8400-e29b-41d4-a716-446655440000"
+    }
+  },
+  "sap_po_create_response_error_material_not_found": {
+    "status": 400,
+    "body": {
+      "error": {
+        "code": "MATERIAL_NOT_FOUND",
+        "message": "Material MAT-LAP-001 does not exist in SAP",
+        "details": [
+          {
+            "field": "items[0].materialCode",
+            "value": "MAT-LAP-001",
+            "issue": "Material master data not found in table MARA"
+          }
+        ],
+        "suggestedAction": "Create material master data in SAP or use an existing material code"
+      },
+      "timestamp": "2025-11-21T10:30:00Z",
+      "correlationId": "550e8400-e29b-41d4-a716-446655440000"
+    }
+  },
+  "sap_po_create_response_error_timeout": {
+    "status": 504,
+    "body": {
+      "error": {
+        "code": "GATEWAY_TIMEOUT",
+        "message": "SAP system did not respond within 30 seconds",
+        "details": [
+          {
+            "system": "SAP ERP",
+            "timeout": "30s",
+            "issue": "Connection timeout or SAP system busy"
+          }
+        ],
+        "suggestedAction": "Request will be retried automatically. Check SAP system health."
+      },
+      "timestamp": "2025-11-21T10:30:00Z",
+      "correlationId": "550e8400-e29b-41d4-a716-446655440000"
+    }
+  },
+  "sap_po_get_status_request": {
+    "description": "Get Purchase Order status from SAP",
+    "endpoint": "GET https://sap-cpi.hpcl.com/api/v1/purchase-orders/4500012345",
+    "headers": {
+      "Authorization": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "X-Correlation-ID": "550e8400-e29b-41d4-a716-446655440000"
+    }
+  },
+  "sap_po_get_status_response": {
+    "status": 200,
+    "body": {
+      "poNumber": "4500012345",
+      "externalReference": "PR-2025-05-001",
+      "status": "RELEASED",
+      "createdAt": "2025-11-21T10:30:00Z",
+      "releasedAt": "2025-11-21T11:00:00Z",
+      "vendor": {
+        "code": "VENDOR-001",
+        "name": "ABC Supplies Pvt Ltd"
+      },
+      "totalValue": 250000.00,
+      "currency": "INR",
+      "deliveryStatus": "NOT_STARTED",
+      "items": [
+        {
+          "itemNumber": "00010",
+          "materialCode": "MAT-LAP-001",
+          "description": "Dell Latitude 5430 Laptop",
+          "quantity": 5.0,
+          "deliveredQuantity": 0.0,
+          "unitPrice": 50000.00,
+          "status": "OPEN"
+        }
+      ],
+      "_links": {
+        "self": {"href": "/api/v1/purchase-orders/4500012345"},
+        "grn": {"href": "/api/v1/purchase-orders/4500012345/grn"}
+      }
+    }
+  },
+  "sap_grn_create_request": {
+    "description": "Create Goods Receipt Note in SAP",
+    "endpoint": "POST https://sap-cpi.hpcl.com/api/v1/goods-receipts",
+    "headers": {
+      "Authorization": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "Content-Type": "application/json",
+      "Idempotency-Key": "GRN-2025-05-001-1732189200",
+      "X-Correlation-ID": "550e8400-e29b-41d4-a716-446655440000"
+    },
+    "body": {
+      "poNumber": "4500012345",
+      "movementType": "101",
+      "postingDate": "2025-12-15",
+      "documentDate": "2025-12-15",
+      "deliveryNote": "DN-12345",
+      "items": [
+        {
+          "poItem": "00010",
+          "quantity": 5.0,
+          "plant": "1000",
+          "storageLocation": "0001",
+          "movementReason": "DELIVERY_COMPLETE"
+        }
+      ]
+    }
+  },
+  "sap_grn_create_response": {
+    "status": 201,
+    "body": {
+      "materialDocument": "5000123456",
+      "fiscalYear": "2025",
+      "poNumber": "4500012345",
+      "postingDate": "2025-12-15",
+      "items": [
+        {
+          "materialDocumentItem": "0001",
+          "poItem": "00010",
+          "quantity": 5.0,
+          "status": "POSTED"
+        }
+      ],
+      "message": "Goods Receipt created successfully"
+    }
+  }
+}

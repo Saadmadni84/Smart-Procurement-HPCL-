@@ -1,0 +1,204 @@
+@startuml pr_to_po_sequence
+title Purchase Request to Purchase Order - Complete Flow
+
+actor "Requestor" as user
+participant "Frontend" as web
+participant "API Gateway" as apigw
+participant "Auth Service" as auth
+participant "Procurement API" as prapi
+participant "Rule Engine" as rules
+participant "Workflow Engine\n(Camunda Zeebe)" as workflow
+participant "Document Intelligence" as docint
+participant "ML Scoring" as ml
+participant "SAP Adapter" as sap
+participant "Kafka" as kafka
+participant "MySQL" as db
+participant "SAP ERP" as saperp
+participant "Notification Service" as notif
+
+== 1. PR Creation ==
+
+user -> web: Create PR with attachments
+web -> apigw: POST /api/pr\n(JWT token)
+apigw -> auth: Validate JWT
+auth --> apigw: Token valid, scopes: pr:create
+apigw -> prapi: POST /api/pr
+
+prapi -> db: Check requestor quota
+db --> prapi: Quota available
+
+prapi -> docint: Upload attachments\nPOST /ocr/extract
+activate docint
+docint -> docint: OCR processing
+docint -> docint: NLP extraction
+docint -> db: Store extracted data
+docint --> prapi: Extracted data\n(vendor, amounts, dates)
+deactivate docint
+
+prapi -> rules: Evaluate PR rules\nPOST /rules/evaluate
+activate rules
+rules -> db: Fetch active rules
+rules -> rules: Execute Drools rules
+alt Rule Violation (Mandatory)
+    rules --> prapi: FAILED\n(Missing cost center)
+    prapi --> web: 400 Bad Request\n(Rule violation)
+    web --> user: Error: Missing cost center
+else Rules Passed
+    rules --> prapi: PASSED\n(Approval hierarchy: L1 → L2)
+    deactivate rules
+    
+    prapi -> db: INSERT pr (status=PENDING_APPROVAL)
+    db --> prapi: PR_ID=PR-2025-05-001
+    
+    prapi -> kafka: Publish pr.created event
+    kafka --> kafka: Store in audit.log topic
+    
+    prapi -> workflow: Start process\nPOST /zeebe/start-process\n(process=pr-approval)
+    activate workflow
+    workflow -> db: Create process instance
+    workflow --> prapi: Process instance ID
+    deactivate workflow
+    
+    prapi --> web: 201 Created\n(PR_ID, status)
+    web --> user: PR created successfully
+end
+
+== 2. Rule Evaluation & Vendor Scoring ==
+
+kafka -> ml: Consume pr.created event
+activate ml
+ml -> db: Fetch vendor history
+ml -> ml: ML scoring\n(vendor reliability,\nprice prediction)
+ml -> db: Store vendor scores
+ml --> kafka: Publish vendor.scored event
+deactivate ml
+
+== 3. Multi-Level Approval Workflow ==
+
+workflow -> workflow: Process pr-approval BPMN
+workflow -> prapi: User Task: Assign to L1 approver
+prapi -> db: Update pr.assigned_to=L1_APPROVER
+prapi -> notif: Send email notification
+notif --> user: Email: Pending approval
+
+note over user
+  L1 Approver logs in
+end note
+
+user -> web: Approve PR
+web -> apigw: POST /api/approvals/{pr_id}/approve\n(JWT, comment, DSC signature)
+apigw -> auth: Validate JWT + 2FA
+auth --> apigw: Authorized (scope: pr:approve)
+apigw -> prapi: POST /api/approvals/{pr_id}/approve
+
+prapi -> db: Verify approver authority
+alt Unauthorized Approver
+    db --> prapi: Approver not in hierarchy
+    prapi --> web: 403 Forbidden
+    web --> user: Unauthorized
+else Authorized
+    prapi -> db: INSERT approval_log\n(approver, timestamp, signature)
+    prapi -> kafka: Publish pr.approved.l1 event
+    
+    prapi -> workflow: Complete user task\n(decision=APPROVED)
+    activate workflow
+    workflow -> workflow: Check approval hierarchy
+    alt Requires L2 Approval (Value > 1L)
+        workflow -> prapi: User Task: Assign to L2 approver (CFO)
+        prapi -> db: Update pr.assigned_to=CFO
+        prapi -> notif: Send email to CFO
+        workflow --> prapi: Awaiting L2 approval
+    else L1 Sufficient
+        workflow -> workflow: Move to PO creation
+    end
+    deactivate workflow
+    
+    prapi --> web: 200 OK (Approval recorded)
+    web --> user: Approved successfully
+end
+
+note over user
+  L2 Approver (CFO) reviews
+end note
+
+user -> web: Approve PR (L2)
+web -> prapi: POST /api/approvals/{pr_id}/approve
+prapi -> db: INSERT approval_log (CFO)
+prapi -> kafka: Publish pr.approved.l2 event
+prapi -> workflow: Complete L2 task (APPROVED)
+
+workflow -> workflow: All approvals complete
+workflow -> prapi: Service Task: Create PO draft
+
+== 4. PO Creation & SAP Sync ==
+
+prapi -> db: INSERT po (status=DRAFT)
+prapi -> sap: POST /sap/create-po\n(PR details, vendor, items)
+activate sap
+
+sap -> saperp: BAPI_PO_CREATE\n(Idempotency-Key: PR_ID + timestamp)
+activate saperp
+
+alt SAP Success
+    saperp --> sap: PO created\n(SAP_PO_ID=4500012345)
+    sap -> db: Update po.sap_po_id
+    sap -> kafka: Publish po.created event
+    sap --> prapi: 200 OK (SAP_PO_ID)
+    
+    prapi -> db: Update pr.status=COMPLETED
+    prapi -> db: Update po.status=ISSUED
+    prapi -> workflow: Complete service task (SUCCESS)
+    workflow -> workflow: End process
+    
+    prapi -> kafka: Publish pr.completed event
+    prapi -> notif: Send PO issued notification
+    notif --> user: PO issued: SAP_PO_ID
+    
+else SAP Error (Timeout, BAPI Failure)
+    saperp --> sap: Error: Vendor not found
+    deactivate saperp
+    sap -> kafka: Publish sap.error event
+    sap -> db: INSERT error_log
+    sap --> prapi: 500 Internal Server Error\n(SAP error details)
+    
+    prapi -> workflow: Error boundary event
+    workflow -> workflow: Retry strategy\n(3 retries, exp backoff)
+    
+    loop Retry 3 times
+        workflow -> sap: Retry BAPI_PO_CREATE
+        sap -> saperp: BAPI_PO_CREATE
+        alt Retry Success
+            saperp --> sap: PO created
+            sap --> workflow: Success
+        else Retry Failed
+            saperp --> sap: Error
+            sap --> workflow: Failed
+        end
+    end
+    
+    alt All Retries Failed
+        workflow -> prapi: Service Task: Create exception
+        prapi -> db: INSERT exception\n(type=SAP_SYNC_FAILED)
+        prapi -> kafka: Publish exception.raised event
+        prapi -> notif: Send exception alert
+        notif --> user: Exception: SAP sync failed
+        
+        workflow -> workflow: Manual fallback path
+        workflow -> prapi: User Task: Manual SAP PO entry
+        prapi -> db: Update pr.status=EXCEPTION
+    end
+end
+deactivate sap
+
+== 5. Audit & Analytics ==
+
+kafka -> db: Stream events to audit_log table
+kafka -> db: Stream events to Elasticsearch
+kafka -> notif: Trigger analytics pipeline
+
+note over db
+  Audit log is immutable,
+  tamper-evident (hash chain)
+end note
+
+@enduml

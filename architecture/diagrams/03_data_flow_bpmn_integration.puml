@@ -1,0 +1,199 @@
+@startuml data_flow_bpmn_integration
+title Data Flow - BPMN Process, Document Store, OCR/NLP Integration
+
+participant "User" as user
+participant "Frontend" as web
+participant "Procurement API" as api
+participant "Workflow Engine\n(Camunda Zeebe)" as bpmn
+database "MySQL" as db
+queue "Kafka" as kafka
+participant "Document Intelligence\n(OCR/NLP)" as ocr
+storage "S3 (DMS)" as s3
+participant "DMS Adapter" as dms
+
+== 1. Document Upload & Processing ==
+
+user -> web: Upload quotation PDF
+web -> api: POST /api/pr/attachments\n(multipart/form-data)
+
+api -> s3: Upload raw file\n(bucket: hpcl-procurement-docs)
+s3 --> api: S3 URI: s3://docs/PR-2025-05-001/quotation.pdf
+
+api -> db: INSERT attachment\n(pr_id, s3_uri, type=QUOTATION)
+db --> api: attachment_id=123
+
+api -> kafka: Publish document.uploaded event\n(attachment_id, s3_uri)
+kafka --> api: Event stored
+
+api --> web: 201 Created (attachment_id)
+
+== 2. Async OCR Processing ==
+
+kafka -> ocr: Consume document.uploaded event
+activate ocr
+
+ocr -> s3: Download file (s3_uri)
+s3 --> ocr: PDF file bytes
+
+ocr -> ocr: PDF to images (Ghostscript)
+ocr -> ocr: OCR with Tesseract\n(multi-language: en, hi)
+note right of ocr
+  OCR Output (raw text):
+  "Vendor: ABC Supplies
+   Amount: ₹2,50,000
+   Date: 2025-11-20
+   Items: Dell Laptops (5 units)"
+end note
+
+ocr -> ocr: NLP extraction (spaCy)\n(Named Entity Recognition)
+note right of ocr
+  Extracted Entities:
+  - Vendor: "ABC Supplies"
+  - Amount: 250000 (INR)
+  - Date: "2025-11-20"
+  - Items: [{"name": "Dell Laptops", "qty": 5}]
+end note
+
+ocr -> db: INSERT extracted_data\n(attachment_id, vendor, amount, items)
+db --> ocr: Data stored
+
+ocr -> kafka: Publish document.processed event\n(attachment_id, extracted_data)
+
+ocr -> s3: Upload OCR output (JSON)\n(s3://docs/PR-2025-05-001/quotation_ocr.json)
+s3 --> ocr: Stored
+
+deactivate ocr
+
+== 3. Data Validation & Enrichment ==
+
+kafka -> api: Consume document.processed event
+activate api
+
+api -> db: SELECT extracted_data WHERE attachment_id=123
+db --> api: Extracted data
+
+api -> db: SELECT pr WHERE pr_id='PR-2025-05-001'
+db --> api: PR details (requestor, estimated_value)
+
+api -> api: Validate extracted data\nagainst PR
+note right of api
+  Validation Checks:
+  1. Extracted amount matches PR estimated_value (±10%)
+  2. Vendor is in approved list
+  3. Items match PR description
+  4. Quotation date is within 30 days
+end note
+
+alt Validation Passed
+    api -> db: UPDATE pr.quotation_verified=TRUE
+    api -> kafka: Publish data.validated event
+else Validation Failed
+    api -> db: INSERT exception\n(type=QUOTATION_MISMATCH)
+    api -> kafka: Publish exception.raised event
+    api -> bpmn: Trigger exception workflow
+    bpmn --> api: Exception process started
+end
+
+deactivate api
+
+== 4. BPMN Process Integration ==
+
+bpmn -> bpmn: Service Task: Fetch PR attachments
+bpmn -> api: GET /api/pr/{pr_id}/attachments
+api -> db: SELECT attachments WHERE pr_id=?
+db --> api: List of attachments
+api --> bpmn: Attachments with s3_uri, extracted_data
+
+bpmn -> bpmn: Business Rule Task:\nEvaluate quotation completeness
+note right of bpmn
+  Rule: Quotation required for PR > 50K
+  If quotation missing → create exception
+end note
+
+alt Quotation Complete
+    bpmn -> bpmn: Move to approval task
+else Quotation Missing
+    bpmn -> api: POST /api/exceptions\n(type=MISSING_QUOTATION)
+    api -> db: INSERT exception
+    api -> kafka: Publish exception.raised event
+    bpmn -> bpmn: User Task: Request quotation upload
+end
+
+== 5. Document Versioning & Audit ==
+
+user -> web: Upload revised quotation (v2)
+web -> api: POST /api/pr/attachments\n(pr_id, file, version=2)
+
+api -> s3: Upload file\n(s3://docs/PR-2025-05-001/quotation_v2.pdf)
+s3 --> api: s3_uri
+
+api -> db: INSERT attachment\n(pr_id, s3_uri, version=2)
+api -> db: UPDATE previous attachment\n(is_latest=FALSE)
+db --> api: Attachment versioned
+
+api -> dms: POST /dms/version\n(document_id, s3_uri, checksum)
+activate dms
+dms -> db: INSERT document_version\n(doc_id, version, checksum, timestamp)
+dms -> kafka: Publish document.versioned event
+dms --> api: Version recorded
+deactivate dms
+
+api -> kafka: Publish document.uploaded event (v2)
+api --> web: 201 Created
+
+== 6. Checksum Verification & Tamper Detection ==
+
+user -> web: Download quotation
+web -> api: GET /api/pr/{pr_id}/attachments/{attachment_id}
+api -> db: SELECT s3_uri, checksum WHERE attachment_id=?
+db --> api: s3_uri, expected_checksum
+
+api -> s3: Download file
+s3 --> api: File bytes
+
+api -> api: Calculate SHA-256 checksum
+api -> api: Verify checksum == expected_checksum
+alt Checksum Match
+    api --> web: 200 OK (file bytes)
+    web --> user: File downloaded
+else Checksum Mismatch (Tampered)
+    api -> kafka: Publish security.tamper.detected event
+    api -> db: INSERT security_incident\n(type=TAMPER_DETECTED)
+    api --> web: 403 Forbidden (File tampered)
+    web --> user: Error: File integrity check failed
+end
+
+== 7. Attachment Lifecycle ==
+
+note over s3
+  Lifecycle Policy:
+  - Day 0-90: Standard storage
+  - Day 90-365: Standard-IA
+  - Day 365+: Glacier (archival)
+  - Day 2555+: Delete (7 years retention)
+end note
+
+s3 -> s3: Apply lifecycle transitions
+s3 -> kafka: Publish document.archived event
+s3 -> kafka: Publish document.deleted event (after retention)
+
+== 8. Search & Analytics ==
+
+kafka -> db: Stream events to Elasticsearch
+note right of db
+  Elasticsearch Index: attachments
+  Fields:
+  - pr_id, attachment_id, s3_uri
+  - extracted_vendor, extracted_amount
+  - ocr_text (full-text search)
+  - uploaded_at, uploaded_by
+end note
+
+user -> web: Search: "ABC Supplies quotations"
+web -> api: GET /api/search?q=ABC Supplies&type=attachments
+api -> db: Elasticsearch query
+db --> api: Search results (attachments)
+api --> web: 200 OK (search results)
+web --> user: List of matching quotations
+
+@enduml

@@ -1,0 +1,413 @@
+@startuml er_diagram
+!define Table(name,desc) class name as "desc" << (T,#FFAAAA) >>
+!define Primary(x) <b>x</b>
+!define Foreign(x) <i>x</i>
+!define Unique(x) <u>x</u>
+
+hide methods
+hide stereotypes
+
+title Entity-Relationship Diagram - HPCL Procurement System
+
+' ========== Core Entities ==========
+
+Table(users, "users") {
+  Primary(user_id) : BIGINT
+  --
+  username : VARCHAR(100)
+  email : VARCHAR(255)
+  full_name : VARCHAR(255)
+  employee_id : VARCHAR(50)
+  department : VARCHAR(100)
+  designation : VARCHAR(100)
+  phone : VARCHAR(20)
+  is_active : BOOLEAN
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+Table(roles, "roles") {
+  Primary(role_id) : BIGINT
+  --
+  role_name : VARCHAR(50)
+  description : TEXT
+  permissions : JSON
+  created_at : TIMESTAMP
+}
+
+Table(user_roles, "user_roles") {
+  Primary(user_role_id) : BIGINT
+  --
+  Foreign(user_id) : BIGINT
+  Foreign(role_id) : BIGINT
+  assigned_at : TIMESTAMP
+  assigned_by : BIGINT
+}
+
+Table(suppliers, "suppliers") {
+  Primary(supplier_id) : BIGINT
+  --
+  Unique(supplier_code) : VARCHAR(50)
+  supplier_name : VARCHAR(255)
+  contact_person : VARCHAR(255)
+  email : VARCHAR(255)
+  phone : VARCHAR(20)
+  address : TEXT
+  city : VARCHAR(100)
+  state : VARCHAR(100)
+  pincode : VARCHAR(10)
+  gstin : VARCHAR(15)
+  pan : VARCHAR(10)
+  is_registered : BOOLEAN
+  is_blacklisted : BOOLEAN
+  rating : DECIMAL(3,2)
+  performance_score : DECIMAL(5,2)
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+Table(categories, "categories") {
+  Primary(category_id) : BIGINT
+  --
+  category_code : VARCHAR(50)
+  category_name : VARCHAR(255)
+  description : TEXT
+  Foreign(parent_category_id) : BIGINT
+  approval_hierarchy : JSON
+  created_at : TIMESTAMP
+}
+
+' ========== PR/PO Entities ==========
+
+Table(purchase_requests, "purchase_requests") {
+  Primary(pr_id) : BIGINT
+  --
+  Unique(pr_number) : VARCHAR(50)
+  description : TEXT
+  Foreign(category_id) : BIGINT
+  estimated_value : DECIMAL(15,2)
+  currency : VARCHAR(3)
+  Foreign(requestor_id) : BIGINT
+  department : VARCHAR(100)
+  cost_center : VARCHAR(50)
+  required_by_date : DATE
+  justification : TEXT
+  priority : ENUM('LOW','MEDIUM','HIGH','URGENT')
+  status : ENUM('DRAFT','PENDING_APPROVAL','APPROVED','REJECTED','COMPLETED','CANCELLED')
+  Foreign(assigned_to) : BIGINT
+  Foreign(workflow_instance_id) : VARCHAR(100)
+  quotation_verified : BOOLEAN
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+Table(pr_items, "pr_items") {
+  Primary(pr_item_id) : BIGINT
+  --
+  Foreign(pr_id) : BIGINT
+  item_number : INT
+  item_description : TEXT
+  quantity : DECIMAL(10,2)
+  unit_of_measure : VARCHAR(20)
+  unit_price : DECIMAL(15,2)
+  total_price : DECIMAL(15,2)
+  specifications : JSON
+  created_at : TIMESTAMP
+}
+
+Table(approvals, "approvals") {
+  Primary(approval_id) : BIGINT
+  --
+  Foreign(pr_id) : BIGINT
+  approval_level : INT
+  Foreign(approver_id) : BIGINT
+  approval_status : ENUM('PENDING','APPROVED','REJECTED')
+  comments : TEXT
+  digital_signature : TEXT
+  signature_timestamp : TIMESTAMP
+  approved_at : TIMESTAMP
+  created_at : TIMESTAMP
+}
+
+Table(purchase_orders, "purchase_orders") {
+  Primary(po_id) : BIGINT
+  --
+  Unique(po_number) : VARCHAR(50)
+  Foreign(pr_id) : BIGINT
+  Foreign(supplier_id) : BIGINT
+  po_date : DATE
+  delivery_date : DATE
+  total_value : DECIMAL(15,2)
+  tax_amount : DECIMAL(15,2)
+  grand_total : DECIMAL(15,2)
+  payment_terms : VARCHAR(255)
+  delivery_address : TEXT
+  status : ENUM('DRAFT','ISSUED','ACKNOWLEDGED','IN_TRANSIT','DELIVERED','CLOSED','CANCELLED')
+  sap_po_id : VARCHAR(50)
+  terms_and_conditions : TEXT
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+Table(po_items, "po_items") {
+  Primary(po_item_id) : BIGINT
+  --
+  Foreign(po_id) : BIGINT
+  Foreign(pr_item_id) : BIGINT
+  item_number : INT
+  item_description : TEXT
+  quantity : DECIMAL(10,2)
+  unit_price : DECIMAL(15,2)
+  tax_rate : DECIMAL(5,2)
+  total_price : DECIMAL(15,2)
+  delivery_schedule : DATE
+  created_at : TIMESTAMP
+}
+
+' ========== GRN/Invoice ==========
+
+Table(goods_receipt_notes, "goods_receipt_notes") {
+  Primary(grn_id) : BIGINT
+  --
+  Unique(grn_number) : VARCHAR(50)
+  Foreign(po_id) : BIGINT
+  grn_date : DATE
+  received_by : BIGINT
+  inspection_status : ENUM('PENDING','PASSED','FAILED')
+  remarks : TEXT
+  sap_grn_id : VARCHAR(50)
+  created_at : TIMESTAMP
+}
+
+Table(grn_items, "grn_items") {
+  Primary(grn_item_id) : BIGINT
+  --
+  Foreign(grn_id) : BIGINT
+  Foreign(po_item_id) : BIGINT
+  quantity_received : DECIMAL(10,2)
+  quantity_accepted : DECIMAL(10,2)
+  quantity_rejected : DECIMAL(10,2)
+  rejection_reason : TEXT
+  created_at : TIMESTAMP
+}
+
+Table(invoices, "invoices") {
+  Primary(invoice_id) : BIGINT
+  --
+  Unique(invoice_number) : VARCHAR(50)
+  Foreign(po_id) : BIGINT
+  Foreign(grn_id) : BIGINT
+  invoice_date : DATE
+  due_date : DATE
+  invoice_amount : DECIMAL(15,2)
+  tax_amount : DECIMAL(15,2)
+  total_amount : DECIMAL(15,2)
+  payment_status : ENUM('PENDING','PAID','OVERDUE','CANCELLED')
+  sap_invoice_id : VARCHAR(50)
+  created_at : TIMESTAMP
+}
+
+' ========== Rules & Exceptions ==========
+
+Table(business_rules, "business_rules") {
+  Primary(rule_id) : BIGINT
+  --
+  Unique(rule_code) : VARCHAR(50)
+  rule_name : VARCHAR(255)
+  rule_expression : TEXT
+  rule_type : ENUM('APPROVAL','VALIDATION','ELIGIBILITY','COMPLIANCE')
+  is_mandatory : BOOLEAN
+  priority : INT
+  owner : VARCHAR(100)
+  status : ENUM('ACTIVE','INACTIVE','DRAFT')
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+Table(rule_evaluations, "rule_evaluations") {
+  Primary(evaluation_id) : BIGINT
+  --
+  Foreign(rule_id) : BIGINT
+  Foreign(pr_id) : BIGINT
+  evaluation_result : ENUM('PASSED','FAILED','WARNING')
+  evaluation_details : JSON
+  evaluated_at : TIMESTAMP
+}
+
+Table(exceptions, "exceptions") {
+  Primary(exception_id) : BIGINT
+  --
+  Unique(exception_number) : VARCHAR(50)
+  Foreign(pr_id) : BIGINT
+  exception_type : ENUM('RULE_VIOLATION','SAP_SYNC_FAILED','MISSING_DOCUMENT','QUOTATION_MISMATCH','OTHER')
+  severity : ENUM('LOW','MEDIUM','HIGH','CRITICAL')
+  description : TEXT
+  Foreign(assigned_to) : BIGINT
+  status : ENUM('OPEN','IN_PROGRESS','RESOLVED','CLOSED')
+  resolution : TEXT
+  resolved_by : BIGINT
+  resolved_at : TIMESTAMP
+  created_at : TIMESTAMP
+}
+
+' ========== Documents & Attachments ==========
+
+Table(attachments, "attachments") {
+  Primary(attachment_id) : BIGINT
+  --
+  Foreign(pr_id) : BIGINT
+  Foreign(po_id) : BIGINT
+  attachment_type : ENUM('QUOTATION','INVOICE','CONTRACT','SPECIFICATION','OTHER')
+  file_name : VARCHAR(255)
+  file_size : BIGINT
+  mime_type : VARCHAR(100)
+  s3_uri : VARCHAR(500)
+  checksum : VARCHAR(64)
+  version : INT
+  is_latest : BOOLEAN
+  uploaded_by : BIGINT
+  uploaded_at : TIMESTAMP
+}
+
+Table(extracted_data, "extracted_data") {
+  Primary(extracted_id) : BIGINT
+  --
+  Foreign(attachment_id) : BIGINT
+  vendor_name : VARCHAR(255)
+  amount : DECIMAL(15,2)
+  date : DATE
+  items : JSON
+  confidence_score : DECIMAL(3,2)
+  ocr_text : TEXT
+  extracted_at : TIMESTAMP
+}
+
+Table(document_versions, "document_versions") {
+  Primary(version_id) : BIGINT
+  --
+  Foreign(attachment_id) : BIGINT
+  version_number : INT
+  s3_uri : VARCHAR(500)
+  checksum : VARCHAR(64)
+  changed_by : BIGINT
+  change_reason : TEXT
+  created_at : TIMESTAMP
+}
+
+' ========== Audit Log ==========
+
+Table(audit_log, "audit_log (Append-only)") {
+  Primary(audit_id) : BIGINT
+  --
+  timestamp : TIMESTAMP
+  Foreign(user_id) : BIGINT
+  action : VARCHAR(100)
+  resource_type : VARCHAR(50)
+  resource_id : VARCHAR(100)
+  old_value : JSON
+  new_value : JSON
+  ip_address : VARCHAR(45)
+  user_agent : TEXT
+  correlation_id : VARCHAR(100)
+  signature_hash : VARCHAR(64)
+}
+
+Table(security_incidents, "security_incidents") {
+  Primary(incident_id) : BIGINT
+  --
+  incident_type : ENUM('TAMPER_DETECTED','UNAUTHORIZED_ACCESS','SUSPICIOUS_ACTIVITY','FAILED_LOGIN')
+  description : TEXT
+  Foreign(user_id) : BIGINT
+  ip_address : VARCHAR(45)
+  severity : ENUM('LOW','MEDIUM','HIGH','CRITICAL')
+  status : ENUM('OPEN','INVESTIGATING','RESOLVED','CLOSED')
+  created_at : TIMESTAMP
+}
+
+' ========== Workflow & Integration ==========
+
+Table(workflow_instances, "workflow_instances") {
+  Primary(instance_id) : BIGINT
+  --
+  Unique(zeebe_instance_id) : VARCHAR(100)
+  process_definition_key : VARCHAR(100)
+  Foreign(pr_id) : BIGINT
+  status : ENUM('ACTIVE','COMPLETED','CANCELLED','ERROR')
+  started_at : TIMESTAMP
+  ended_at : TIMESTAMP
+  created_at : TIMESTAMP
+}
+
+Table(integration_logs, "integration_logs") {
+  Primary(log_id) : BIGINT
+  --
+  integration_type : ENUM('SAP','GEM','CPPP','DMS','ESIGN')
+  operation : VARCHAR(100)
+  request_payload : JSON
+  response_payload : JSON
+  status : ENUM('SUCCESS','FAILED','TIMEOUT')
+  error_message : TEXT
+  idempotency_key : VARCHAR(100)
+  execution_time_ms : INT
+  Foreign(pr_id) : BIGINT
+  Foreign(po_id) : BIGINT
+  created_at : TIMESTAMP
+}
+
+Table(notifications, "notifications") {
+  Primary(notification_id) : BIGINT
+  --
+  Foreign(user_id) : BIGINT
+  notification_type : ENUM('PR_CREATED','APPROVAL_REQUIRED','PO_ISSUED','EXCEPTION_RAISED')
+  subject : VARCHAR(255)
+  message : TEXT
+  channel : ENUM('EMAIL','SMS','IN_APP')
+  is_read : BOOLEAN
+  sent_at : TIMESTAMP
+  read_at : TIMESTAMP
+  created_at : TIMESTAMP
+}
+
+' ========== Relationships ==========
+
+users "1" -- "*" user_roles : has
+roles "1" -- "*" user_roles : assigned to
+users "1" -- "*" purchase_requests : creates (requestor)
+users "1" -- "*" approvals : approves
+users "1" -- "*" exceptions : assigned
+
+categories "1" -- "*" purchase_requests : categorized as
+categories "1" -- "*" categories : parent-child (self)
+
+purchase_requests "1" -- "*" pr_items : contains
+purchase_requests "1" -- "*" approvals : requires
+purchase_requests "1" -- "0..1" purchase_orders : generates
+purchase_requests "1" -- "*" exceptions : raises
+purchase_requests "1" -- "*" rule_evaluations : evaluated by
+purchase_requests "1" -- "*" attachments : has
+
+suppliers "1" -- "*" purchase_orders : fulfills
+
+purchase_orders "1" -- "*" po_items : contains
+purchase_orders "1" -- "*" goods_receipt_notes : received as
+purchase_orders "1" -- "*" invoices : billed as
+
+goods_receipt_notes "1" -- "*" grn_items : contains
+
+business_rules "1" -- "*" rule_evaluations : evaluates
+
+attachments "1" -- "*" extracted_data : extracts
+attachments "1" -- "*" document_versions : versioned
+
+purchase_requests "1" -- "0..1" workflow_instances : orchestrated by
+
+pr_items "1" -- "0..1" po_items : mapped to
+po_items "1" -- "0..1" grn_items : received as
+
+users "1" -- "*" audit_log : performs
+users "1" -- "*" notifications : receives
+
+purchase_requests "1" -- "*" integration_logs : syncs
+purchase_orders "1" -- "*" integration_logs : syncs
+
+@enduml
