@@ -1,0 +1,11 @@
+logical_field,sap_field,description
+pr_id,EBELN (PR Number),PR document number in SAP
+po_id,EBELN (PO Number),PO document number in SAP
+requestor,ERNAM (Created By),User who created the PR/PO
+dept,GSBER (Business Area),Department or business area
+estimated_value_inr,NETPR,Net price/estimated value
+currency,WAERS,Currency key
+vendor_name,LIFNR (Vendor),Vendor account number/name
+category,EKGRP (Purchasing Group),Procurement category or group
+required_by_date,BDTER (Delivery Date),Requested delivery date
+status,STATU (Status),PR/PO life-cycle status

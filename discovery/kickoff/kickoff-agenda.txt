@@ -1,0 +1,21 @@
+90-minute Kickoff Agenda — Discovery Phase
+
+Duration: 90 minutes
+
+Attendees (required): Procurement Head, Category Managers, Finance Lead, IT/SAP Lead, Legal/Compliance Rep, Project Sponsor, Product Owner
+
+Timing (minutes) — Owner
+-------------------------------------------------
+0-5  — Welcome & objectives (Project Sponsor)
+5-15 — Introductions & scope (Product Owner)
+15-30 — High-level timeline & milestones (Project Manager)
+30-45 — Current procurement flow walkthrough (Procurement Head)
+45-60 — CVC/PSU compliance highlights (Legal/Compliance)
+60-75 — Data & integration requirements (IT/SAP)
+75-85 — Q&A and critical risks (All)
+85-90 — Immediate next steps & actions (Project Manager)
+
+Required pre-kickoff actions:
+- Request participants review `discovery/README.md`
+- IT to prepare sample SAP exports (anonymized) for Week 1
+- Legal to bring template clauses for single-source approvals

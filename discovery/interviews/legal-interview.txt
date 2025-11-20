@@ -1,0 +1,19 @@
+Legal & Compliance Interview Guide
+
+Purpose: Capture mandatory clauses, CVC/PSU requirements, blacklisting rules, and evidence retention.
+
+Questions:
+1. What mandatory clauses must appear in procurement (> threshold) agreements?
+2. What are HPCL’s policy thresholds that map to CVC/PSU requirements (e.g., tenders, prior approvals)?
+3. What vendor due diligence and conflict-of-interest checks are required?
+4. What triggers a referral to the CVC committee or internal audit?
+5. Retention policy for procurement documents and audit artifacts?
+6. Requirements around disclosures for single-source purchases?
+7. Sample legal review checklist for high-value procurements?
+8. Are non-compliance events reportable to external bodies? What are timelines?
+9. What evidence must be attached to a PR/PO to be legally defensible?
+10. Any template language we must push into the UI for approvals?
+
+Open probes:
+- Blacklisting process and re-onboarding rules
+- Interaction with vendor registration teams

@@ -1,0 +1,7 @@
+role,level,approver_group,threshold_inr,notes
+Requestor,1,Requester Team,0-50000,Auto-approve within budget if funds available
+Category Manager,2,Category Team,50001-200000,Review & consolidate PRs
+Procurement Head,3,Procurement,200001-500000,Approves strategic purchases
+Finance Head,3,Finance,200001-500000,Budget validation required
+Managing Director,4,MD,500001-5000000,MD approval for high-value exceptions
+CVC Committee,5,Compliance,>5000000,Committee approval for >5M exceptions

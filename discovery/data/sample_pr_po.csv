@@ -1,0 +1,6 @@
+pr_id,po_id,requestor,dept,estimated_value_inr,currency,vendor_name,category,required_by_date,status
+PR-1001,,ajay.kumar,Operations,125000,INR,ABC Supplies,Maintenance,2026-01-15,PR_CREATED
+PR-1002,PO-2002,kavita.singh,Projects,750000,INR,Global Engines,Capital Equipment,2026-02-10,PO_ISSUED
+PR-1003,,rahul.patil,IT,45000,INR,TechWorld,Software License,2025-12-20,PR_CREATED
+PR-1004,PO-2004,sunita.verma,Logistics,5500000,INR,LogiTrans Pvt Ltd,Transport Services,2026-03-01,PO_ISSUED
+PR-1005,,manish.sharma,Procurement,300000,INR,OneSource,Consulting,2026-01-30,PR_CREATED

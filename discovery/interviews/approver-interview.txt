@@ -1,0 +1,21 @@
+Approver Interview Guide
+
+Purpose: Capture approval criteria, thresholds, exception handling, SLAs, and evidence requirements.
+
+Questions:
+1. Which types of PR/PO require your approval?
+2. What thresholds do you rely on to approve or escalate a request?
+3. What documentation do you expect to see before approving?
+4. Do you use delegated authority — if so, how is it recorded?
+5. How do you handle escalations or requests for retrospective approvals?
+6. What turnaround time (SLA) do you follow for approvals of different bands?
+7. What common evidence do you check (comparative statements, vendor background, technical specs)?
+8. When do you call for Legal/Compliance involvement?
+9. What constitutes an exception that must go to MD or CVC committee?
+10. How do you prefer to receive approval tasks (email, dashboard, mobile)?
+11. Which manual checks would you be comfortable automating?
+12. Describe a recent approval that required significant investigation — why?
+
+Open probes:
+- Audit trails and approver signature requirements
+- Evidence of independence / conflict of interest checks

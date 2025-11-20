@@ -1,0 +1,20 @@
+IT / SAP Interview Guide
+
+Purpose: Understand data availability, extract methods, integration constraints, and security.
+
+Questions:
+1. What SAP modules and tables store PR/PO/master data for procurement?
+2. What formats can you export (CSV, IDoc, OData, API)? Any sample extracts available?
+3. Who owns the vendor master and how often is it refreshed?
+4. Which fields are authoritative in SAP for price, quantity, GL account, cost center?
+5. Are there existing APIs or middleware (PI/PO, CPI) we can use for integration?
+6. What SSO / authentication methods are available (SAML, OAuth)?
+7. Data retention, anonymization, and masking rules for sharing samples?
+8. Any performance constraints for real-time rule evaluation against SAP data?
+9. How do you currently process approvals in SAP (workflow engine)?
+10. Can you provide a sample mapping between SAP field names and business terms?
+
+Open probes:
+- Batch frequency for data syncs
+- Sandbox access for dev/testing
+- Change control processes for schema changes

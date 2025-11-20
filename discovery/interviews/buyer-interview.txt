@@ -1,0 +1,24 @@
+Buyer Interview Guide
+
+Purpose: Understand how buyers raise PRs, common exceptions, supporting docs, and pain points.
+
+Questions:
+1. Describe the end-to-end process you follow to create a PR (step-by-step).
+2. Which fields are mandatory in your PR form? What fields are often missing or inaccurate?
+3. How do you select vendors? Is there a vendor master or ad-hoc entry?
+4. What justifications are typically attached for single-source or emergency purchases?
+5. How are estimated values calculated and who validates them?
+6. What supporting documents do you attach? (commercial, technical, approvals)
+7. How do you track tender activities and vendor queries?
+8. Describe frequent approval bottlenecks or rework loops.
+9. Which approvals do you find unclear or redundant?
+10. Are there existing templates or forms (Excel, SharePoint) you reuse?
+11. What data fields would you consider safe to auto-fill from SAP?
+12. Which rules would you expect to be automated vs. reviewed manually?
+13. What audit trails are required for compliance and who reviews them?
+14. Example PRs: please provide 3 anonymized PR IDs and attached docs.
+
+Open probes:
+- Times when an urgent procurement bypassed standard approvals
+- Instances of vendor disputes or blacklisting
+- Any integrations currently used (email alerts, SAP workflows)

@@ -1,0 +1,7 @@
+rule_id,category,field,operator,value,description,action,severity,automatable
+R001,Vendor Selection,vendor_type,equals,registered,"Vendor must be registered in HPCL vendor master","flag, require documentation",High,true
+R002,Single Source,estimated_value,greater_than,500000,"Single source purchases above INR 5,00,000 require MD approval","require MD approval",High,false
+R003,Prior Approvals,category_manager_approval,equals,required,"Category manager approval mandatory for capital spends","block until approved",Medium,true
+R004,Prior Tender,tender_required,equals,yes,"Tenders required for purchases above threshold or strategic categories","create tender task",High,false
+R005,Blacklist,vendor_blacklisted,equals,true,"Blacklisted vendors prohibited from procurement","block and notify compliance",Critical,false
+R006,ConflictOfInterest,requestor_conflict,equals,true,"If conflict of interest declared, require Legal review","require legal review",High,false
