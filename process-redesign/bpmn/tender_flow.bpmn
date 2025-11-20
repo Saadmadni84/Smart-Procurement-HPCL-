@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  id="Definitions_Tender_Flow"
+                  targetNamespace="http://hpcl.com/procurement">
+  
+  <bpmn:process id="Tender_Flow_Process" name="Tender Publication and Management" isExecutable="true">
+    
+    <bpmn:startEvent id="StartEvent_TenderCreated" name="Tender Created">
+      <bpmn:outgoing>Flow_to_ValidateTender</bpmn:outgoing>
+    </bpmn:startEvent>
+    
+    <bpmn:serviceTask id="Task_ValidateTender" name="Validate Tender Documents" 
+                      camunda:type="external" camunda:topic="validate-tender">
+      <bpmn:incoming>Flow_to_ValidateTender</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_ValidationGateway</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:exclusiveGateway id="Gateway_ValidationResult" name="Valid?">
+      <bpmn:incoming>Flow_to_ValidationGateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_ValidationPassed</bpmn:outgoing>
+      <bpmn:outgoing>Flow_ValidationFailed</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <bpmn:userTask id="Task_FixTenderIssues" name="Fix Tender Issues" 
+                   camunda:assignee="${tenderCreator}">
+      <bpmn:incoming>Flow_ValidationFailed</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_Revalidate</bpmn:outgoing>
+    </bpmn:userTask>
+    
+    <bpmn:sequenceFlow id="Flow_to_Revalidate" sourceRef="Task_FixTenderIssues" targetRef="Task_ValidateTender"/>
+    
+    <bpmn:userTask id="Task_TenderApproval" name="Tender Committee Approval" 
+                   camunda:candidateGroups="tender-committee">
+      <bpmn:incoming>Flow_ValidationPassed</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_ApprovalDecision</bpmn:outgoing>
+    </bpmn:userTask>
+    
+    <bpmn:exclusiveGateway id="Gateway_TenderApproved" name="Approved?">
+      <bpmn:incoming>Flow_to_ApprovalDecision</bpmn:incoming>
+      <bpmn:outgoing>Flow_TenderApproved</bpmn:outgoing>
+      <bpmn:outgoing>Flow_TenderRejected</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <bpmn:endEvent id="EndEvent_TenderRejected" name="Tender Cancelled">
+      <bpmn:incoming>Flow_TenderRejected</bpmn:incoming>
+    </bpmn:endEvent>
+    
+    <bpmn:parallelGateway id="Gateway_PublishParallel" name="Publish to Multiple Platforms">
+      <bpmn:incoming>Flow_TenderApproved</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_CPPP</bpmn:outgoing>
+      <bpmn:outgoing>Flow_to_GeM</bpmn:outgoing>
+      <bpmn:outgoing>Flow_to_Email</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    
+    <bpmn:serviceTask id="Task_PublishCPPP" name="Publish to CPPP" 
+                      camunda:type="external" camunda:topic="publish-cppp">
+      <bpmn:incoming>Flow_to_CPPP</bpmn:incoming>
+      <bpmn:outgoing>Flow_CPPP_Done</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:serviceTask id="Task_PublishGeM" name="Publish to GeM" 
+                      camunda:type="external" camunda:topic="publish-gem">
+      <bpmn:incoming>Flow_to_GeM</bpmn:incoming>
+      <bpmn:outgoing>Flow_GeM_Done</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:serviceTask id="Task_EmailVendors" name="Email Registered Vendors" 
+                      camunda:type="external" camunda:topic="email-vendors">
+      <bpmn:incoming>Flow_to_Email</bpmn:incoming>
+      <bpmn:outgoing>Flow_Email_Done</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:parallelGateway id="Gateway_PublishComplete" name="All Published">
+      <bpmn:incoming>Flow_CPPP_Done</bpmn:incoming>
+      <bpmn:incoming>Flow_GeM_Done</bpmn:incoming>
+      <bpmn:incoming>Flow_Email_Done</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_BidCollection</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    
+    <bpmn:intermediateCatchEvent id="Event_BidDeadline" name="Bid Submission Deadline">
+      <bpmn:incoming>Flow_to_BidCollection</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_CollectBids</bpmn:outgoing>
+      <bpmn:timerEventDefinition>
+        <bpmn:timeDuration>P30D</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:intermediateCatchEvent>
+    
+    <bpmn:serviceTask id="Task_CollectBids" name="Collect and Consolidate Bids" 
+                      camunda:type="external" camunda:topic="collect-bids">
+      <bpmn:incoming>Flow_to_CollectBids</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_BidEvaluation</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:callActivity id="CallActivity_BidEvaluation" name="Bid Evaluation Subprocess" 
+                       calledElement="Bid_Evaluation_Process">
+      <bpmn:incoming>Flow_to_BidEvaluation</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_End</bpmn:outgoing>
+    </bpmn:callActivity>
+    
+    <bpmn:endEvent id="EndEvent_TenderComplete" name="Tender Completed">
+      <bpmn:incoming>Flow_to_End</bpmn:incoming>
+    </bpmn:endEvent>
+    
+    <!-- Sequence Flows -->
+    <bpmn:sequenceFlow id="Flow_to_ValidateTender" sourceRef="StartEvent_TenderCreated" targetRef="Task_ValidateTender"/>
+    <bpmn:sequenceFlow id="Flow_to_ValidationGateway" sourceRef="Task_ValidateTender" targetRef="Gateway_ValidationResult"/>
+    <bpmn:sequenceFlow id="Flow_ValidationPassed" name="Yes" sourceRef="Gateway_ValidationResult" targetRef="Task_TenderApproval">
+      <bpmn:conditionExpression>${validationPassed == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_ValidationFailed" name="No" sourceRef="Gateway_ValidationResult" targetRef="Task_FixTenderIssues">
+      <bpmn:conditionExpression>${validationPassed == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_to_ApprovalDecision" sourceRef="Task_TenderApproval" targetRef="Gateway_TenderApproved"/>
+    <bpmn:sequenceFlow id="Flow_TenderApproved" name="Yes" sourceRef="Gateway_TenderApproved" targetRef="Gateway_PublishParallel">
+      <bpmn:conditionExpression>${tenderApproved == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_TenderRejected" name="No" sourceRef="Gateway_TenderApproved" targetRef="EndEvent_TenderRejected">
+      <bpmn:conditionExpression>${tenderApproved == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_to_CPPP" sourceRef="Gateway_PublishParallel" targetRef="Task_PublishCPPP"/>
+    <bpmn:sequenceFlow id="Flow_to_GeM" sourceRef="Gateway_PublishParallel" targetRef="Task_PublishGeM"/>
+    <bpmn:sequenceFlow id="Flow_to_Email" sourceRef="Gateway_PublishParallel" targetRef="Task_EmailVendors"/>
+    <bpmn:sequenceFlow id="Flow_CPPP_Done" sourceRef="Task_PublishCPPP" targetRef="Gateway_PublishComplete"/>
+    <bpmn:sequenceFlow id="Flow_GeM_Done" sourceRef="Task_PublishGeM" targetRef="Gateway_PublishComplete"/>
+    <bpmn:sequenceFlow id="Flow_Email_Done" sourceRef="Task_EmailVendors" targetRef="Gateway_PublishComplete"/>
+    <bpmn:sequenceFlow id="Flow_to_BidCollection" sourceRef="Gateway_PublishComplete" targetRef="Event_BidDeadline"/>
+    <bpmn:sequenceFlow id="Flow_to_CollectBids" sourceRef="Event_BidDeadline" targetRef="Task_CollectBids"/>
+    <bpmn:sequenceFlow id="Flow_to_BidEvaluation" sourceRef="Task_CollectBids" targetRef="CallActivity_BidEvaluation"/>
+    <bpmn:sequenceFlow id="Flow_to_End" sourceRef="CallActivity_BidEvaluation" targetRef="EndEvent_TenderComplete"/>
+    
+  </bpmn:process>
+</bpmn:definitions>

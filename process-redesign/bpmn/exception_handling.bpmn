@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  id="Definitions_Exception_Handling"
+                  targetNamespace="http://hpcl.com/procurement">
+  
+  <bpmn:process id="Exception_Handling_Process" name="Exception & Escalation Handling" isExecutable="true">
+    
+    <bpmn:startEvent id="StartEvent_ExceptionTriggered" name="Exception Triggered">
+      <bpmn:outgoing>Flow_to_Classify</bpmn:outgoing>
+    </bpmn:startEvent>
+    
+    <bpmn:serviceTask id="Task_ClassifyException" name="Classify Exception Type" 
+                      camunda:type="external" camunda:topic="classify-exception">
+      <bpmn:incoming>Flow_to_Classify</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_SeverityGateway</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:exclusiveGateway id="Gateway_SeverityLevel" name="Severity Level?">
+      <bpmn:incoming>Flow_to_SeverityGateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_Critical</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Major</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Minor</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <!-- Critical Path (Rule Violation, Budget Breach, Compliance Failure) -->
+    <bpmn:serviceTask id="Task_AlertCVO" name="Alert CVO/Compliance Officer" 
+                      camunda:type="external" camunda:topic="alert-cvo">
+      <bpmn:incoming>Flow_Critical</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_FreezeProcess</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:serviceTask id="Task_FreezeProcess" name="Freeze Workflow (Lock PR/PO)" 
+                      camunda:type="external" camunda:topic="freeze-workflow">
+      <bpmn:incoming>Flow_to_FreezeProcess</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_CVOReview</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:userTask id="Task_CVOReview" name="CVO Committee Review" 
+                   camunda:candidateGroups="cvo-committee">
+      <bpmn:incoming>Flow_to_CVOReview</bpmn:incoming>
+      <bpmn:outgoing>Flow_CVODecision</bpmn:outgoing>
+    </bpmn:userTask>
+    
+    <bpmn:exclusiveGateway id="Gateway_CVODecision" name="CVO Decision?">
+      <bpmn:incoming>Flow_CVODecision</bpmn:incoming>
+      <bpmn:outgoing>Flow_Terminate</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Override</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <bpmn:endEvent id="EndEvent_ProcessTerminated" name="Process Terminated">
+      <bpmn:incoming>Flow_Terminate</bpmn:incoming>
+    </bpmn:endEvent>
+    
+    <bpmn:serviceTask id="Task_LogOverride" name="Log CVO Override in Audit Trail" 
+                      camunda:type="external" camunda:topic="log-override">
+      <bpmn:incoming>Flow_Override</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_Resume</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <!-- Major Path (SAP Sync Failure, Document Missing, Vendor Blacklisted) -->
+    <bpmn:userTask id="Task_ManagerReview" name="Department Manager Review" 
+                   camunda:candidateGroups="department-managers">
+      <bpmn:incoming>Flow_Major</bpmn:incoming>
+      <bpmn:outgoing>Flow_ManagerDecision</bpmn:outgoing>
+    </bpmn:userTask>
+    
+    <bpmn:exclusiveGateway id="Gateway_ManagerDecision" name="Can Resolve?">
+      <bpmn:incoming>Flow_ManagerDecision</bpmn:incoming>
+      <bpmn:outgoing>Flow_ManagerResolve</bpmn:outgoing>
+      <bpmn:outgoing>Flow_EscalateToMD</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <bpmn:serviceTask id="Task_ApplyFix" name="Apply Manager's Fix" 
+                      camunda:type="external" camunda:topic="apply-fix">
+      <bpmn:incoming>Flow_ManagerResolve</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_Resume</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:userTask id="Task_MDEscalation" name="MD/CFO Escalation" 
+                   camunda:candidateGroups="executive-committee">
+      <bpmn:incoming>Flow_EscalateToMD</bpmn:incoming>
+      <bpmn:outgoing>Flow_MDDecision</bpmn:outgoing>
+    </bpmn:userTask>
+    
+    <bpmn:exclusiveGateway id="Gateway_MDDecision" name="MD Decision?">
+      <bpmn:incoming>Flow_MDDecision</bpmn:incoming>
+      <bpmn:outgoing>Flow_MDApprove</bpmn:outgoing>
+      <bpmn:outgoing>Flow_MDReject</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <bpmn:endEvent id="EndEvent_MDRejected" name="MD Rejected">
+      <bpmn:incoming>Flow_MDReject</bpmn:incoming>
+    </bpmn:endEvent>
+    
+    <bpmn:serviceTask id="Task_MDOverride" name="Execute MD Override" 
+                      camunda:type="external" camunda:topic="md-override">
+      <bpmn:incoming>Flow_MDApprove</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_Resume</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <!-- Minor Path (Missing Optional Field, Timeout, Notification Failure) -->
+    <bpmn:serviceTask id="Task_AutoRetry" name="Auto-Retry with Fallback" 
+                      camunda:type="external" camunda:topic="auto-retry">
+      <bpmn:incoming>Flow_Minor</bpmn:incoming>
+      <bpmn:outgoing>Flow_RetryResult</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:exclusiveGateway id="Gateway_RetryResult" name="Retry Success?">
+      <bpmn:incoming>Flow_RetryResult</bpmn:incoming>
+      <bpmn:outgoing>Flow_RetrySuccess</bpmn:outgoing>
+      <bpmn:outgoing>Flow_RetryFailed</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <bpmn:userTask id="Task_MinorReview" name="Buyer Manual Fix" 
+                   camunda:candidateGroups="buyers">
+      <bpmn:incoming>Flow_RetryFailed</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_Resume</bpmn:outgoing>
+    </bpmn:userTask>
+    
+    <!-- Convergence Point -->
+    <bpmn:serviceTask id="Task_ResumeWorkflow" name="Resume Original Workflow" 
+                      camunda:type="external" camunda:topic="resume-workflow">
+      <bpmn:incoming>Flow_to_Resume</bpmn:incoming>
+      <bpmn:incoming>Flow_RetrySuccess</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_AuditLog</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:serviceTask id="Task_AuditLog" name="Log Exception Resolution in Audit Trail" 
+                      camunda:type="external" camunda:topic="audit-exception">
+      <bpmn:incoming>Flow_to_AuditLog</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_Success</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:endEvent id="EndEvent_ExceptionResolved" name="Exception Resolved">
+      <bpmn:incoming>Flow_to_Success</bpmn:incoming>
+    </bpmn:endEvent>
+    
+    <!-- Sequence Flows -->
+    <bpmn:sequenceFlow id="Flow_to_Classify" sourceRef="StartEvent_ExceptionTriggered" targetRef="Task_ClassifyException"/>
+    <bpmn:sequenceFlow id="Flow_to_SeverityGateway" sourceRef="Task_ClassifyException" targetRef="Gateway_SeverityLevel"/>
+    
+    <bpmn:sequenceFlow id="Flow_Critical" name="Critical" sourceRef="Gateway_SeverityLevel" targetRef="Task_AlertCVO">
+      <bpmn:conditionExpression>${severity == 'critical'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Major" name="Major" sourceRef="Gateway_SeverityLevel" targetRef="Task_ManagerReview">
+      <bpmn:conditionExpression>${severity == 'major'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Minor" name="Minor" sourceRef="Gateway_SeverityLevel" targetRef="Task_AutoRetry">
+      <bpmn:conditionExpression>${severity == 'minor'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    
+    <!-- Critical Path Flows -->
+    <bpmn:sequenceFlow id="Flow_to_FreezeProcess" sourceRef="Task_AlertCVO" targetRef="Task_FreezeProcess"/>
+    <bpmn:sequenceFlow id="Flow_to_CVOReview" sourceRef="Task_FreezeProcess" targetRef="Task_CVOReview"/>
+    <bpmn:sequenceFlow id="Flow_CVODecision" sourceRef="Task_CVOReview" targetRef="Gateway_CVODecision"/>
+    <bpmn:sequenceFlow id="Flow_Terminate" name="Terminate" sourceRef="Gateway_CVODecision" targetRef="EndEvent_ProcessTerminated">
+      <bpmn:conditionExpression>${cvoDecision == 'terminate'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Override" name="Override" sourceRef="Gateway_CVODecision" targetRef="Task_LogOverride">
+      <bpmn:conditionExpression>${cvoDecision == 'override'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    
+    <!-- Major Path Flows -->
+    <bpmn:sequenceFlow id="Flow_ManagerDecision" sourceRef="Task_ManagerReview" targetRef="Gateway_ManagerDecision"/>
+    <bpmn:sequenceFlow id="Flow_ManagerResolve" name="Resolve" sourceRef="Gateway_ManagerDecision" targetRef="Task_ApplyFix">
+      <bpmn:conditionExpression>${managerAction == 'resolve'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_EscalateToMD" name="Escalate" sourceRef="Gateway_ManagerDecision" targetRef="Task_MDEscalation">
+      <bpmn:conditionExpression>${managerAction == 'escalate'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_MDDecision" sourceRef="Task_MDEscalation" targetRef="Gateway_MDDecision"/>
+    <bpmn:sequenceFlow id="Flow_MDApprove" name="Approve" sourceRef="Gateway_MDDecision" targetRef="Task_MDOverride">
+      <bpmn:conditionExpression>${mdDecision == 'approve'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_MDReject" name="Reject" sourceRef="Gateway_MDDecision" targetRef="EndEvent_MDRejected">
+      <bpmn:conditionExpression>${mdDecision == 'reject'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    
+    <!-- Minor Path Flows -->
+    <bpmn:sequenceFlow id="Flow_RetryResult" sourceRef="Task_AutoRetry" targetRef="Gateway_RetryResult"/>
+    <bpmn:sequenceFlow id="Flow_RetrySuccess" name="Yes" sourceRef="Gateway_RetryResult" targetRef="Task_ResumeWorkflow">
+      <bpmn:conditionExpression>${retrySuccess == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_RetryFailed" name="No" sourceRef="Gateway_RetryResult" targetRef="Task_MinorReview">
+      <bpmn:conditionExpression>${retrySuccess == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    
+    <!-- Convergence Flows -->
+    <bpmn:sequenceFlow id="Flow_to_Resume" sourceRef="Task_LogOverride" targetRef="Task_ResumeWorkflow"/>
+    <bpmn:sequenceFlow id="Flow_to_Resume" sourceRef="Task_ApplyFix" targetRef="Task_ResumeWorkflow"/>
+    <bpmn:sequenceFlow id="Flow_to_Resume" sourceRef="Task_MDOverride" targetRef="Task_ResumeWorkflow"/>
+    <bpmn:sequenceFlow id="Flow_to_Resume" sourceRef="Task_MinorReview" targetRef="Task_ResumeWorkflow"/>
+    <bpmn:sequenceFlow id="Flow_to_AuditLog" sourceRef="Task_ResumeWorkflow" targetRef="Task_AuditLog"/>
+    <bpmn:sequenceFlow id="Flow_to_Success" sourceRef="Task_AuditLog" targetRef="EndEvent_ExceptionResolved"/>
+    
+  </bpmn:process>
+</bpmn:definitions>

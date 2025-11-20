@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  id="Definitions_Bid_Evaluation"
+                  targetNamespace="http://hpcl.com/procurement">
+  
+  <bpmn:process id="Bid_Evaluation_Process" name="Automated Bid Evaluation" isExecutable="true">
+    
+    <bpmn:startEvent id="StartEvent_BidsCollected" name="Bids Collected">
+      <bpmn:outgoing>Flow_to_OCR</bpmn:outgoing>
+    </bpmn:startEvent>
+    
+    <bpmn:serviceTask id="Task_OCR_Extraction" name="OCR Document Extraction" 
+                      camunda:type="external" camunda:topic="ocr-extraction">
+      <bpmn:incoming>Flow_to_OCR</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_ComplianceCheck</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:serviceTask id="Task_ComplianceCheck" name="Automated Compliance Check" 
+                      camunda:type="external" camunda:topic="compliance-check">
+      <bpmn:incoming>Flow_to_ComplianceCheck</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_ComplianceGateway</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:exclusiveGateway id="Gateway_ComplianceResult" name="Compliant?">
+      <bpmn:incoming>Flow_to_ComplianceGateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_Compliant</bpmn:outgoing>
+      <bpmn:outgoing>Flow_NonCompliant</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <bpmn:userTask id="Task_ReviewNonCompliance" name="Review Non-Compliant Bids" 
+                   camunda:candidateGroups="compliance-team">
+      <bpmn:incoming>Flow_NonCompliant</bpmn:incoming>
+      <bpmn:outgoing>Flow_NonComplianceDecision</bpmn:outgoing>
+    </bpmn:userTask>
+    
+    <bpmn:exclusiveGateway id="Gateway_NonComplianceDecision" name="Disqualify?">
+      <bpmn:incoming>Flow_NonComplianceDecision</bpmn:incoming>
+      <bpmn:outgoing>Flow_Disqualify</bpmn:outgoing>
+      <bpmn:outgoing>Flow_AllowWithWarning</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <bpmn:endEvent id="EndEvent_BidDisqualified" name="Bid Disqualified">
+      <bpmn:incoming>Flow_Disqualify</bpmn:incoming>
+    </bpmn:endEvent>
+    
+    <bpmn:serviceTask id="Task_MLScoring" name="ML-Based Bid Scoring" 
+                      camunda:type="external" camunda:topic="ml-scoring">
+      <bpmn:incoming>Flow_Compliant</bpmn:incoming>
+      <bpmn:incoming>Flow_AllowWithWarning</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_PriceAnalysis</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:serviceTask id="Task_PriceAnalysis" name="Comparative Price Analysis" 
+                      camunda:type="external" camunda:topic="price-analysis">
+      <bpmn:incoming>Flow_to_PriceAnalysis</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_Ranking</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:serviceTask id="Task_RankBids" name="Rank Bids by Score" 
+                      camunda:type="external" camunda:topic="rank-bids">
+      <bpmn:incoming>Flow_to_Ranking</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_QualityGateway</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:exclusiveGateway id="Gateway_QualityThreshold" name="ML Score > Threshold?">
+      <bpmn:incoming>Flow_to_QualityGateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_HighQuality</bpmn:outgoing>
+      <bpmn:outgoing>Flow_LowQuality</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <bpmn:userTask id="Task_ManualReview" name="Manual Review by Committee" 
+                   camunda:candidateGroups="eval-committee">
+      <bpmn:incoming>Flow_LowQuality</bpmn:incoming>
+      <bpmn:outgoing>Flow_ManualDecision</bpmn:outgoing>
+    </bpmn:userTask>
+    
+    <bpmn:userTask id="Task_CommitteeApproval" name="Committee Final Approval" 
+                   camunda:candidateGroups="eval-committee">
+      <bpmn:incoming>Flow_HighQuality</bpmn:incoming>
+      <bpmn:incoming>Flow_ManualDecision</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_FinalDecision</bpmn:outgoing>
+    </bpmn:userTask>
+    
+    <bpmn:exclusiveGateway id="Gateway_FinalDecision" name="Award Contract?">
+      <bpmn:incoming>Flow_to_FinalDecision</bpmn:incoming>
+      <bpmn:outgoing>Flow_AwardContract</bpmn:outgoing>
+      <bpmn:outgoing>Flow_RejectAll</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <bpmn:endEvent id="EndEvent_AllRejected" name="All Bids Rejected">
+      <bpmn:incoming>Flow_RejectAll</bpmn:incoming>
+    </bpmn:endEvent>
+    
+    <bpmn:serviceTask id="Task_GenerateAwardLetter" name="Generate Award Letter" 
+                      camunda:type="external" camunda:topic="award-letter">
+      <bpmn:incoming>Flow_AwardContract</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_NotifyVendor</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:serviceTask id="Task_NotifyVendor" name="Notify Winning Vendor" 
+                      camunda:type="external" camunda:topic="notify-vendor">
+      <bpmn:incoming>Flow_to_NotifyVendor</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_CreatePO</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:callActivity id="CallActivity_CreatePO" name="Create PO from Tender" 
+                       calledElement="PR_to_PO_Process">
+      <bpmn:incoming>Flow_to_CreatePO</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_End</bpmn:outgoing>
+    </bpmn:callActivity>
+    
+    <bpmn:endEvent id="EndEvent_Success" name="Contract Awarded">
+      <bpmn:incoming>Flow_to_End</bpmn:incoming>
+    </bpmn:endEvent>
+    
+    <!-- Sequence Flows -->
+    <bpmn:sequenceFlow id="Flow_to_OCR" sourceRef="StartEvent_BidsCollected" targetRef="Task_OCR_Extraction"/>
+    <bpmn:sequenceFlow id="Flow_to_ComplianceCheck" sourceRef="Task_OCR_Extraction" targetRef="Task_ComplianceCheck"/>
+    <bpmn:sequenceFlow id="Flow_to_ComplianceGateway" sourceRef="Task_ComplianceCheck" targetRef="Gateway_ComplianceResult"/>
+    <bpmn:sequenceFlow id="Flow_Compliant" name="Yes" sourceRef="Gateway_ComplianceResult" targetRef="Task_MLScoring">
+      <bpmn:conditionExpression>${compliant == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_NonCompliant" name="No" sourceRef="Gateway_ComplianceResult" targetRef="Task_ReviewNonCompliance">
+      <bpmn:conditionExpression>${compliant == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_NonComplianceDecision" sourceRef="Task_ReviewNonCompliance" targetRef="Gateway_NonComplianceDecision"/>
+    <bpmn:sequenceFlow id="Flow_Disqualify" name="Yes" sourceRef="Gateway_NonComplianceDecision" targetRef="EndEvent_BidDisqualified">
+      <bpmn:conditionExpression>${disqualify == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_AllowWithWarning" name="No" sourceRef="Gateway_NonComplianceDecision" targetRef="Task_MLScoring">
+      <bpmn:conditionExpression>${disqualify == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_to_PriceAnalysis" sourceRef="Task_MLScoring" targetRef="Task_PriceAnalysis"/>
+    <bpmn:sequenceFlow id="Flow_to_Ranking" sourceRef="Task_PriceAnalysis" targetRef="Task_RankBids"/>
+    <bpmn:sequenceFlow id="Flow_to_QualityGateway" sourceRef="Task_RankBids" targetRef="Gateway_QualityThreshold"/>
+    <bpmn:sequenceFlow id="Flow_HighQuality" name="Yes" sourceRef="Gateway_QualityThreshold" targetRef="Task_CommitteeApproval">
+      <bpmn:conditionExpression>${mlScore &gt;= 0.7}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_LowQuality" name="No" sourceRef="Gateway_QualityThreshold" targetRef="Task_ManualReview">
+      <bpmn:conditionExpression>${mlScore &lt; 0.7}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_ManualDecision" sourceRef="Task_ManualReview" targetRef="Task_CommitteeApproval"/>
+    <bpmn:sequenceFlow id="Flow_to_FinalDecision" sourceRef="Task_CommitteeApproval" targetRef="Gateway_FinalDecision"/>
+    <bpmn:sequenceFlow id="Flow_AwardContract" name="Yes" sourceRef="Gateway_FinalDecision" targetRef="Task_GenerateAwardLetter">
+      <bpmn:conditionExpression>${awardContract == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_RejectAll" name="No" sourceRef="Gateway_FinalDecision" targetRef="EndEvent_AllRejected">
+      <bpmn:conditionExpression>${awardContract == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_to_NotifyVendor" sourceRef="Task_GenerateAwardLetter" targetRef="Task_NotifyVendor"/>
+    <bpmn:sequenceFlow id="Flow_to_CreatePO" sourceRef="Task_NotifyVendor" targetRef="CallActivity_CreatePO"/>
+    <bpmn:sequenceFlow id="Flow_to_End" sourceRef="CallActivity_CreatePO" targetRef="EndEvent_Success"/>
+    
+  </bpmn:process>
+</bpmn:definitions>

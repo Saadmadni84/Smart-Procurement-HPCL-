@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  id="Definitions_PR_to_PO"
+                  targetNamespace="http://hpcl.com/procurement">
+  
+  <bpmn:process id="PR_to_PO_Process" name="PR to PO Automated Flow" isExecutable="true">
+    
+    <!-- Start Event -->
+    <bpmn:startEvent id="StartEvent_PR_Created" name="PR Created">
+      <bpmn:outgoing>Flow_to_AutoClassify</bpmn:outgoing>
+    </bpmn:startEvent>
+    
+    <!-- Auto-Classification Service Task -->
+    <bpmn:serviceTask id="Task_AutoClassify" name="Auto-Classify PR" 
+                      camunda:type="external" camunda:topic="classify-pr">
+      <bpmn:incoming>Flow_to_AutoClassify</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_BudgetCheck</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <!-- Budget Validation Service Task -->
+    <bpmn:serviceTask id="Task_BudgetCheck" name="SAP Budget Check" 
+                      camunda:type="external" camunda:topic="sap-budget-check">
+      <bpmn:incoming>Flow_to_BudgetCheck</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_BudgetGateway</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <!-- Budget Gateway -->
+    <bpmn:exclusiveGateway id="Gateway_BudgetAvailable" name="Budget Available?">
+      <bpmn:incoming>Flow_to_BudgetGateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_BudgetYes</bpmn:outgoing>
+      <bpmn:outgoing>Flow_BudgetNo</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <!-- Budget Rejected End -->
+    <bpmn:endEvent id="EndEvent_BudgetRejected" name="PR Rejected - No Budget">
+      <bpmn:incoming>Flow_BudgetNo</bpmn:incoming>
+    </bpmn:endEvent>
+    
+    <!-- Rule Engine Evaluation -->
+    <bpmn:serviceTask id="Task_RuleEngine" name="Evaluate Compliance Rules" 
+                      camunda:type="external" camunda:topic="rule-evaluation">
+      <bpmn:incoming>Flow_BudgetYes</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_RuleGateway</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <!-- Rule Evaluation Gateway -->
+    <bpmn:exclusiveGateway id="Gateway_RulesPassed" name="Rules Passed?">
+      <bpmn:incoming>Flow_to_RuleGateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_RulesPassed</bpmn:outgoing>
+      <bpmn:outgoing>Flow_RulesFailed</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <!-- Exception Handling Subprocess -->
+    <bpmn:userTask id="Task_ExceptionReview" name="Review Exception" 
+                   camunda:assignee="${exceptionReviewer}">
+      <bpmn:incoming>Flow_RulesFailed</bpmn:incoming>
+      <bpmn:outgoing>Flow_ExceptionResolved</bpmn:outgoing>
+    </bpmn:userTask>
+    
+    <!-- Determine Approval Path Gateway -->
+    <bpmn:exclusiveGateway id="Gateway_ApprovalPath" name="Approval Path?">
+      <bpmn:incoming>Flow_RulesPassed</bpmn:incoming>
+      <bpmn:incoming>Flow_ExceptionResolved</bpmn:incoming>
+      <bpmn:outgoing>Flow_AutoApprove</bpmn:outgoing>
+      <bpmn:outgoing>Flow_ManagerApproval</bpmn:outgoing>
+      <bpmn:outgoing>Flow_MDApproval</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <!-- Auto-Approval for Low Value -->
+    <bpmn:serviceTask id="Task_AutoApprove" name="Auto-Approve" 
+                      camunda:type="external" camunda:topic="auto-approve">
+      <bpmn:incoming>Flow_AutoApprove</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_POGeneration</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <!-- Manager Approval User Task -->
+    <bpmn:userTask id="Task_ManagerApproval" name="Manager Approval" 
+                   camunda:assignee="${managerUserId}">
+      <bpmn:incoming>Flow_ManagerApproval</bpmn:incoming>
+      <bpmn:outgoing>Flow_ManagerDecision</bpmn:outgoing>
+    </bpmn:userTask>
+    
+    <!-- MD/CVC Approval User Task -->
+    <bpmn:userTask id="Task_MDApproval" name="MD/CVC Committee Approval" 
+                   camunda:candidateGroups="md-group,cvc-committee">
+      <bpmn:incoming>Flow_MDApproval</bpmn:incoming>
+      <bpmn:outgoing>Flow_MDDecision</bpmn:outgoing>
+    </bpmn:userTask>
+    
+    <!-- Approval Decision Gateway -->
+    <bpmn:exclusiveGateway id="Gateway_ApprovalDecision" name="Approved?">
+      <bpmn:incoming>Flow_ManagerDecision</bpmn:incoming>
+      <bpmn:incoming>Flow_MDDecision</bpmn:incoming>
+      <bpmn:outgoing>Flow_Approved</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Rejected</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <!-- Rejection End -->
+    <bpmn:endEvent id="EndEvent_Rejected" name="PR Rejected by Approver">
+      <bpmn:incoming>Flow_Rejected</bpmn:incoming>
+    </bpmn:endEvent>
+    
+    <!-- PO Generation Service Task -->
+    <bpmn:serviceTask id="Task_GeneratePO" name="Generate PO" 
+                      camunda:type="external" camunda:topic="generate-po">
+      <bpmn:incoming>Flow_Approved</bpmn:incoming>
+      <bpmn:incoming>Flow_to_POGeneration</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_SAPSync</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <!-- SAP Sync Service Task -->
+    <bpmn:serviceTask id="Task_SAPSync" name="Sync PO to SAP" 
+                      camunda:type="external" camunda:topic="sap-sync-po">
+      <bpmn:incoming>Flow_to_SAPSync</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_End</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <!-- Success End Event -->
+    <bpmn:endEvent id="EndEvent_Success" name="PO Created & Synced">
+      <bpmn:incoming>Flow_to_End</bpmn:incoming>
+    </bpmn:endEvent>
+    
+    <!-- Sequence Flows -->
+    <bpmn:sequenceFlow id="Flow_to_AutoClassify" sourceRef="StartEvent_PR_Created" targetRef="Task_AutoClassify"/>
+    <bpmn:sequenceFlow id="Flow_to_BudgetCheck" sourceRef="Task_AutoClassify" targetRef="Task_BudgetCheck"/>
+    <bpmn:sequenceFlow id="Flow_to_BudgetGateway" sourceRef="Task_BudgetCheck" targetRef="Gateway_BudgetAvailable"/>
+    <bpmn:sequenceFlow id="Flow_BudgetYes" name="Yes" sourceRef="Gateway_BudgetAvailable" targetRef="Task_RuleEngine">
+      <bpmn:conditionExpression>${budgetAvailable == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_BudgetNo" name="No" sourceRef="Gateway_BudgetAvailable" targetRef="EndEvent_BudgetRejected">
+      <bpmn:conditionExpression>${budgetAvailable == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_to_RuleGateway" sourceRef="Task_RuleEngine" targetRef="Gateway_RulesPassed"/>
+    <bpmn:sequenceFlow id="Flow_RulesPassed" name="Passed" sourceRef="Gateway_RulesPassed" targetRef="Gateway_ApprovalPath">
+      <bpmn:conditionExpression>${rulesPassed == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_RulesFailed" name="Failed" sourceRef="Gateway_RulesPassed" targetRef="Task_ExceptionReview">
+      <bpmn:conditionExpression>${rulesPassed == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_ExceptionResolved" sourceRef="Task_ExceptionReview" targetRef="Gateway_ApprovalPath"/>
+    <bpmn:sequenceFlow id="Flow_AutoApprove" name="< ₹50K" sourceRef="Gateway_ApprovalPath" targetRef="Task_AutoApprove">
+      <bpmn:conditionExpression>${estimatedValue &lt; 50000}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_ManagerApproval" name="₹50K - ₹5L" sourceRef="Gateway_ApprovalPath" targetRef="Task_ManagerApproval">
+      <bpmn:conditionExpression>${estimatedValue &gt;= 50000 &amp;&amp; estimatedValue &lt; 500000}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_MDApproval" name="> ₹5L" sourceRef="Gateway_ApprovalPath" targetRef="Task_MDApproval">
+      <bpmn:conditionExpression>${estimatedValue &gt;= 500000}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_ManagerDecision" sourceRef="Task_ManagerApproval" targetRef="Gateway_ApprovalDecision"/>
+    <bpmn:sequenceFlow id="Flow_MDDecision" sourceRef="Task_MDApproval" targetRef="Gateway_ApprovalDecision"/>
+    <bpmn:sequenceFlow id="Flow_Approved" name="Yes" sourceRef="Gateway_ApprovalDecision" targetRef="Task_GeneratePO">
+      <bpmn:conditionExpression>${approved == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Rejected" name="No" sourceRef="Gateway_ApprovalDecision" targetRef="EndEvent_Rejected">
+      <bpmn:conditionExpression>${approved == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_to_POGeneration" sourceRef="Task_AutoApprove" targetRef="Task_GeneratePO"/>
+    <bpmn:sequenceFlow id="Flow_to_SAPSync" sourceRef="Task_GeneratePO" targetRef="Task_SAPSync"/>
+    <bpmn:sequenceFlow id="Flow_to_End" sourceRef="Task_SAPSync" targetRef="EndEvent_Success"/>
+    
+  </bpmn:process>
+</bpmn:definitions>
