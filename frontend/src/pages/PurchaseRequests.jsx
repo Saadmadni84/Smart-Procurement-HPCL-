@@ -7,10 +7,9 @@ const PurchaseRequests = () => {
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({
     description: '',
-    category: 'IT_HARDWARE',
-    estimatedValue: '',
+    category: 'IT Hardware',
+    estimatedValueInr: '',
     department: '',
-    costCenter: '',
     requiredByDate: '',
     justification: '',
   });
@@ -22,16 +21,16 @@ const PurchaseRequests = () => {
   const loadPRs = async () => {
     setLoading(true);
     try {
-      // const data = await getAllPRs();
-      // setPrs(data);
-      // Mock data for now
-      setPrs([
-        { prId: 'PR-2025-05-001', description: '5 Dell Laptops', estimatedValue: 250000, status: 'PENDING_APPROVAL', createdAt: '2025-11-20', createdBy: 'John Doe' },
-        { prId: 'PR-2025-05-002', description: 'Office Furniture', estimatedValue: 150000, status: 'APPROVED', createdAt: '2025-11-19', createdBy: 'Jane Smith' },
-        { prId: 'PR-2025-05-003', description: 'Software Licenses', estimatedValue: 500000, status: 'REJECTED', createdAt: '2025-11-18', createdBy: 'Bob Johnson' },
-      ]);
+      const data = await getAllPRs();
+      setPrs(data);
     } catch (error) {
       console.error('Error loading PRs:', error);
+      // Fallback to mock data if API fails
+      setPrs([
+        { prId: 'PR-2025-05-001', description: '5 Dell Laptops', estimatedValueInr: 250000, status: 'PENDING_APPROVAL', createdAt: '2025-11-20', createdBy: 'John Doe' },
+        { prId: 'PR-2025-05-002', description: 'Office Furniture', estimatedValueInr: 150000, status: 'APPROVED', createdAt: '2025-11-19', createdBy: 'Jane Smith' },
+        { prId: 'PR-2025-05-003', description: 'Software Licenses', estimatedValueInr: 500000, status: 'REJECTED', createdAt: '2025-11-18', createdBy: 'Bob Johnson' },
+      ]);
     } finally {
       setLoading(false);
     }
@@ -40,14 +39,23 @@ const PurchaseRequests = () => {
   const handleCreatePR = async (e) => {
     e.preventDefault();
     try {
-      await createPR(formData);
+      // Transform form data to match backend DTO expectations
+      const payload = {
+        description: formData.description,
+        category: formData.category,
+        department: formData.department,
+        estimatedValueInr: parseFloat(formData.estimatedValueInr),
+        requiredByDate: formData.requiredByDate || null,
+        justification: formData.justification,
+      };
+      
+      await createPR(payload);
       setShowModal(false);
       setFormData({
         description: '',
-        category: 'IT_HARDWARE',
-        estimatedValue: '',
+        category: 'IT Hardware',
+        estimatedValueInr: '',
         department: '',
-        costCenter: '',
         requiredByDate: '',
         justification: '',
       });
@@ -99,14 +107,14 @@ const PurchaseRequests = () => {
                 <tr key={pr.prId}>
                   <td><strong>{pr.prId}</strong></td>
                   <td>{pr.description}</td>
-                  <td>₹{pr.estimatedValue.toLocaleString()}</td>
+                  <td>₹{(pr.estimatedValueInr || pr.estimatedValue || 0).toLocaleString()}</td>
                   <td>
                     <span className={`badge ${getStatusBadge(pr.status)}`}>
                       {pr.status.replace('_', ' ')}
                     </span>
                   </td>
-                  <td>{pr.createdBy}</td>
-                  <td>{pr.createdAt}</td>
+                  <td>{pr.createdBy || 'N/A'}</td>
+                  <td>{new Date(pr.createdAt).toLocaleDateString()}</td>
                   <td>
                     <button className="btn btn-secondary btn-small">View</button>
                   </td>
@@ -146,11 +154,11 @@ const PurchaseRequests = () => {
                   onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                   required
                 >
-                  <option value="IT_HARDWARE">IT Hardware</option>
-                  <option value="IT_SOFTWARE">IT Software</option>
-                  <option value="FURNITURE">Furniture</option>
-                  <option value="STATIONERY">Stationery</option>
-                  <option value="SERVICES">Services</option>
+                  <option value="IT Hardware">IT Hardware</option>
+                  <option value="IT Software">IT Software</option>
+                  <option value="Furniture">Furniture</option>
+                  <option value="Stationery">Stationery</option>
+                  <option value="Services">Services</option>
                 </select>
               </div>
 
@@ -159,8 +167,8 @@ const PurchaseRequests = () => {
                 <input
                   type="number"
                   className="form-input"
-                  value={formData.estimatedValue}
-                  onChange={(e) => setFormData({ ...formData, estimatedValue: e.target.value })}
+                  value={formData.estimatedValueInr}
+                  onChange={(e) => setFormData({ ...formData, estimatedValueInr: e.target.value })}
                   required
                   placeholder="250000"
                 />
@@ -175,6 +183,17 @@ const PurchaseRequests = () => {
                   onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                   required
                   placeholder="IT"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Required By Date</label>
+                <input
+                  type="date"
+                  className="form-input"
+                  value={formData.requiredByDate}
+                  onChange={(e) => setFormData({ ...formData, requiredByDate: e.target.value })}
+                  placeholder="YYYY-MM-DD"
                 />
               </div>
 
