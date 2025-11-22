@@ -74,11 +74,21 @@ export const rejectPR = async (prId, reason) => {
 // Rules API
 export const getAllRules = async (category = null) => {
   try {
-    const params = category ? { category } : {};
-    const response = await api.get('/rules/catalog', { params });
+    const url = category ? `/rules/category/${category}` : '/rules';
+    const response = await api.get(url);
     return response.data;
   } catch (error) {
     console.error('Error fetching rules:', error);
+    throw error;
+  }
+};
+
+export const getActiveRules = async () => {
+  try {
+    const response = await api.get('/rules/active');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching active rules:', error);
     throw error;
   }
 };
@@ -103,10 +113,50 @@ export const createRule = async (ruleData) => {
   }
 };
 
-// Approvals API
-export const getApprovalsInbox = async () => {
+export const updateRule = async (id, ruleData) => {
   try {
-    const response = await api.get('/approvals/inbox');
+    const response = await api.put(`/rules/${id}`, ruleData);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating rule:', error);
+    throw error;
+  }
+};
+
+export const deleteRule = async (id) => {
+  try {
+    const response = await api.delete(`/rules/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting rule:', error);
+    throw error;
+  }
+};
+
+// Approvals API
+export const getAllApprovals = async () => {
+  try {
+    const response = await api.get('/approvals');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching approvals:', error);
+    throw error;
+  }
+};
+
+export const getPendingApprovals = async () => {
+  try {
+    const response = await api.get('/approvals/pending');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching pending approvals:', error);
+    throw error;
+  }
+};
+
+export const getApprovalsInbox = async (approverId) => {
+  try {
+    const response = await api.get(`/approvals/inbox/${approverId}`);
     return response.data;
   } catch (error) {
     console.error('Error fetching approvals inbox:', error);
@@ -114,10 +164,40 @@ export const getApprovalsInbox = async () => {
   }
 };
 
-// Exceptions API
-export const getAllExceptions = async (params = {}) => {
+export const getApprovalsByPR = async (prId) => {
   try {
-    const response = await api.get('/exception/list', { params });
+    const response = await api.get(`/approvals/pr/${prId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching approvals for PR:', error);
+    throw error;
+  }
+};
+
+export const approveApproval = async (id, comments, approverId) => {
+  try {
+    const response = await api.post(`/approvals/${id}/approve`, { comments, approverId });
+    return response.data;
+  } catch (error) {
+    console.error('Error approving approval:', error);
+    throw error;
+  }
+};
+
+export const rejectApproval = async (id, comments, approverId) => {
+  try {
+    const response = await api.post(`/approvals/${id}/reject`, { comments, approverId });
+    return response.data;
+  } catch (error) {
+    console.error('Error rejecting approval:', error);
+    throw error;
+  }
+};
+
+// Exceptions API
+export const getAllExceptions = async () => {
+  try {
+    const response = await api.get('/exceptions');
     return response.data;
   } catch (error) {
     console.error('Error fetching exceptions:', error);
@@ -125,15 +205,55 @@ export const getAllExceptions = async (params = {}) => {
   }
 };
 
-export const resolveException = async (exceptionId, resolution, comments) => {
+export const getOpenExceptions = async () => {
   try {
-    const response = await api.post(`/exception/${exceptionId}/resolve`, {
+    const response = await api.get('/exceptions/open');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching open exceptions:', error);
+    throw error;
+  }
+};
+
+export const getExceptionsByPR = async (prId) => {
+  try {
+    const response = await api.get(`/exceptions/pr/${prId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching exceptions for PR:', error);
+    throw error;
+  }
+};
+
+export const getExceptionsBySeverity = async (severity) => {
+  try {
+    const response = await api.get(`/exceptions/severity/${severity}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching exceptions by severity:', error);
+    throw error;
+  }
+};
+
+export const resolveException = async (exceptionId, resolution, resolvedBy) => {
+  try {
+    const response = await api.post(`/exceptions/${exceptionId}/resolve`, {
       resolution,
-      comments,
+      resolvedBy,
     });
     return response.data;
   } catch (error) {
     console.error(`Error resolving exception ${exceptionId}:`, error);
+    throw error;
+  }
+};
+
+export const escalateException = async (exceptionId) => {
+  try {
+    const response = await api.post(`/exceptions/${exceptionId}/escalate`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error escalating exception ${exceptionId}:`, error);
     throw error;
   }
 };

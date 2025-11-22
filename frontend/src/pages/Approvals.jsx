@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getApprovalsInbox, approvePR, rejectPR } from '../services/api';
+import { getPendingApprovals, approveApproval, rejectApproval } from '../services/api';
 
 const Approvals = () => {
   const [approvals, setApprovals] = useState([]);
@@ -13,44 +13,44 @@ const Approvals = () => {
   const loadApprovals = async () => {
     setLoading(true);
     try {
-      // const data = await getApprovalsInbox();
-      // setApprovals(data.filter(a => a.status === filter));
-      // Mock data for now
-      const mockData = [
-        { prId: 'PR-2025-05-045', description: '10 HP Monitors', estimatedValue: 350000, status: 'PENDING', createdBy: 'Alice Brown', createdAt: '2025-11-22', priority: 'HIGH' },
-        { prId: 'PR-2025-05-044', description: 'Office Chairs', estimatedValue: 125000, status: 'PENDING', createdBy: 'Charlie Wilson', createdAt: '2025-11-21', priority: 'MEDIUM' },
-        { prId: 'PR-2025-05-043', description: 'Printer Supplies', estimatedValue: 45000, status: 'APPROVED', createdBy: 'Diana Prince', createdAt: '2025-11-20', priority: 'LOW' },
-      ];
-      setApprovals(mockData.filter(a => a.status === filter));
+      const data = await getPendingApprovals();
+      if (filter !== 'ALL') {
+        setApprovals(data.filter(a => a.status === filter));
+      } else {
+        setApprovals(data);
+      }
     } catch (error) {
       console.error('Error loading approvals:', error);
+      // Fallback to empty array on error
+      setApprovals([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleApprove = async (prId) => {
+  const handleApprove = async (approvalId) => {
+    const comments = prompt('Enter approval comments (optional):');
     try {
-      await approvePR(prId, 'John Doe');
-      alert(`PR ${prId} approved successfully!`);
+      await approveApproval(approvalId, comments || '', 'current.user@hpcl.co.in');
+      alert(`Approval approved successfully!`);
       loadApprovals();
     } catch (error) {
-      console.error('Error approving PR:', error);
-      alert('Error approving PR. Please check backend connection.');
+      console.error('Error approving:', error);
+      alert('Error approving. Please check backend connection.');
     }
   };
 
-  const handleReject = async (prId) => {
-    const reason = prompt('Enter rejection reason:');
-    if (!reason) return;
+  const handleReject = async (approvalId) => {
+    const comments = prompt('Enter rejection reason:');
+    if (!comments) return;
     
     try {
-      await rejectPR(prId, 'John Doe', reason);
-      alert(`PR ${prId} rejected.`);
+      await rejectApproval(approvalId, comments, 'current.user@hpcl.co.in');
+      alert(`Approval rejected.`);
       loadApprovals();
     } catch (error) {
-      console.error('Error rejecting PR:', error);
-      alert('Error rejecting PR. Please check backend connection.');
+      console.error('Error rejecting:', error);
+      alert('Error rejecting. Please check backend connection.');
     }
   };
 
@@ -105,40 +105,40 @@ const Approvals = () => {
           <table className="table">
             <thead>
               <tr>
+                <th>Approval ID</th>
                 <th>PR ID</th>
-                <th>Description</th>
-                <th>Value (INR)</th>
-                <th>Priority</th>
-                <th>Requestor</th>
+                <th>Level</th>
+                <th>Status</th>
+                <th>Approver</th>
                 <th>Created</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {approvals.map((approval) => (
-                <tr key={approval.prId}>
+                <tr key={approval.id}>
                   <td><strong>{approval.prId}</strong></td>
-                  <td>{approval.description}</td>
-                  <td>₹{approval.estimatedValue.toLocaleString()}</td>
+                  <td>{approval.prId}</td>
+                  <td>Level {approval.approvalLevel}</td>
                   <td>
-                    <span className={`badge ${getPriorityBadge(approval.priority)}`}>
-                      {approval.priority}
+                    <span className={`badge ${approval.status === 'PENDING' ? 'badge-warning' : approval.status === 'APPROVED' ? 'badge-success' : 'badge-danger'}`}>
+                      {approval.status}
                     </span>
                   </td>
-                  <td>{approval.createdBy}</td>
-                  <td>{approval.createdAt}</td>
+                  <td>{approval.approverName}</td>
+                  <td>{new Date(approval.createdAt).toLocaleString()}</td>
                   <td>
                     {filter === 'PENDING' ? (
                       <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
                         <button
                           className="btn btn-success btn-small"
-                          onClick={() => handleApprove(approval.prId)}
+                          onClick={() => handleApprove(approval.id)}
                         >
                           ✅ Approve
                         </button>
                         <button
                           className="btn btn-danger btn-small"
-                          onClick={() => handleReject(approval.prId)}
+                          onClick={() => handleReject(approval.id)}
                         >
                           ❌ Reject
                         </button>

@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import StatsCard from '../components/StatsCard';
 import QuickActions from '../components/QuickActions';
-import { getDashboardMetrics } from '../services/api';
+import { getDashboardSummary } from '../services/api';
 
 const Dashboard = () => {
   const [metrics, setMetrics] = useState({
-    pendingApprovals: 12,
-    activePRs: 45,
-    rulesActive: 127,
-    avgCycleTime: '8 hours',
+    totalPRs: 0,
+    pendingApprovals: 0,
+    approved: 0,
+    drafts: 0,
+    activeExceptions: 0,
+    totalValue: 0
   });
   const [loading, setLoading] = useState(false);
 
@@ -19,9 +21,8 @@ const Dashboard = () => {
   const loadMetrics = async () => {
     setLoading(true);
     try {
-      // const data = await getDashboardMetrics();
-      // setMetrics(data);
-      // Using mock data for now since backend endpoints are not implemented yet
+      const data = await getDashboardSummary();
+      setMetrics(data);
     } catch (error) {
       console.error('Error loading metrics:', error);
     } finally {
@@ -40,28 +41,28 @@ const Dashboard = () => {
         <StatsCard
           label="Pending Approvals"
           value={metrics.pendingApprovals}
-          subtitle="⏱ 3 urgent"
+          subtitle={metrics.activeExceptions > 0 ? `⚠ ${metrics.activeExceptions} exceptions` : "✅ All good"}
           variant="warning"
           icon="⏰"
         />
         <StatsCard
-          label="Active PRs"
-          value={metrics.activePRs}
-          subtitle="✅ 15 in PO stage"
+          label="Total PRs"
+          value={metrics.totalPRs}
+          subtitle={`✅ ${metrics.approved} approved`}
           variant="success"
           icon="📋"
         />
         <StatsCard
-          label="Rules Active"
-          value={metrics.rulesActive}
-          subtitle="🟢 All OK"
+          label="Drafts"
+          value={metrics.drafts}
+          subtitle="📝 Awaiting submission"
           variant="info"
-          icon="⚙️"
+          icon="📄"
         />
         <StatsCard
-          label="Avg Cycle Time"
-          value={metrics.avgCycleTime}
-          subtitle="⬇ 85% faster"
+          label="Approved PRs"
+          value={metrics.approved}
+          subtitle="🎉 Completed"
           variant="success"
           icon="⚡"
         />

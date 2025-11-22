@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAllExceptions, resolveException } from '../services/api';
+import { getAllExceptions, getExceptionsBySeverity, resolveException } from '../services/api';
 
 const Exceptions = () => {
   const [exceptions, setExceptions] = useState([]);
@@ -13,51 +13,16 @@ const Exceptions = () => {
   const loadExceptions = async () => {
     setLoading(true);
     try {
-      // const data = await getAllExceptions();
-      // if (filter !== 'ALL') {
-      //   setExceptions(data.filter(e => e.severity === filter));
-      // } else {
-      //   setExceptions(data);
-      // }
-      
-      // Mock data for now
-      const mockData = [
-        { 
-          exceptionId: 'EXC-2025-001', 
-          prId: 'PR-2025-05-040', 
-          description: 'Rule violation: Value exceeds approval threshold without CFO sign-off',
-          severity: 'HIGH',
-          createdAt: '2025-11-22 09:30',
-          status: 'OPEN',
-          assignedTo: 'Finance Team'
-        },
-        { 
-          exceptionId: 'EXC-2025-002', 
-          prId: 'PR-2025-05-038', 
-          description: 'Vendor not in approved list',
-          severity: 'MEDIUM',
-          createdAt: '2025-11-21 14:20',
-          status: 'OPEN',
-          assignedTo: 'Procurement Team'
-        },
-        { 
-          exceptionId: 'EXC-2025-003', 
-          prId: 'PR-2025-05-035', 
-          description: 'Missing cost center information',
-          severity: 'LOW',
-          createdAt: '2025-11-20 11:15',
-          status: 'RESOLVED',
-          assignedTo: 'IT Team'
-        },
-      ];
-      
-      if (filter !== 'ALL') {
-        setExceptions(mockData.filter(e => e.severity === filter));
+      let data;
+      if (filter === 'ALL') {
+        data = await getAllExceptions();
       } else {
-        setExceptions(mockData);
+        data = await getExceptionsBySeverity(filter);
       }
+      setExceptions(data);
     } catch (error) {
       console.error('Error loading exceptions:', error);
+      setExceptions([]);
     } finally {
       setLoading(false);
     }
@@ -68,7 +33,7 @@ const Exceptions = () => {
     if (!resolution) return;
 
     try {
-      await resolveException(exceptionId, 'John Doe', resolution);
+      await resolveException(exceptionId, resolution, 'current.user@hpcl.co.in');
       alert(`Exception ${exceptionId} resolved!`);
       loadExceptions();
     } catch (error) {

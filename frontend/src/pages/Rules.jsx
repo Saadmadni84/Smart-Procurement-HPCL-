@@ -19,16 +19,11 @@ const Rules = () => {
   const loadRules = async () => {
     setLoading(true);
     try {
-      // const data = await getAllRules();
-      // setRules(data);
-      // Mock data for now
-      setRules([
-        { ruleId: 'RULE-001', name: 'Value > 1L requires CFO approval', expression: 'estimatedValue > 100000', mandatory: true, owner: 'Finance Team', status: 'ACTIVE' },
-        { ruleId: 'RULE-002', name: 'IT purchases need CTO sign-off', expression: 'category == "IT_HARDWARE" || category == "IT_SOFTWARE"', mandatory: true, owner: 'IT Team', status: 'ACTIVE' },
-        { ruleId: 'RULE-003', name: 'Vendor registration check', expression: 'vendor.registered == true', mandatory: false, owner: 'Procurement Team', status: 'ACTIVE' },
-      ]);
+      const data = await getAllRules();
+      setRules(data);
     } catch (error) {
       console.error('Error loading rules:', error);
+      setRules([]);
     } finally {
       setLoading(false);
     }
@@ -81,24 +76,26 @@ const Rules = () => {
             </thead>
             <tbody>
               {rules.map((rule) => (
-                <tr key={rule.ruleId}>
+                <tr key={rule.id}>
                   <td><strong>{rule.ruleId}</strong></td>
-                  <td>{rule.name}</td>
+                  <td>{rule.description}</td>
                   <td>
                     <code style={{ fontSize: '0.85rem', padding: '2px 6px', backgroundColor: 'var(--light-bg)', borderRadius: '4px' }}>
-                      {rule.expression}
+                      {rule.fieldName} {rule.operator} {rule.ruleValue}
                     </code>
                   </td>
                   <td>
-                    {rule.mandatory ? (
-                      <span className="badge badge-danger">Mandatory</span>
+                    {rule.severity === 'HIGH' || rule.severity === 'CRITICAL' ? (
+                      <span className="badge badge-danger">{rule.severity}</span>
                     ) : (
-                      <span className="badge badge-info">Optional</span>
+                      <span className="badge badge-info">{rule.severity}</span>
                     )}
                   </td>
-                  <td>{rule.owner}</td>
+                  <td>{rule.createdBy || 'SYSTEM'}</td>
                   <td>
-                    <span className="badge badge-success">{rule.status}</span>
+                    <span className={`badge ${rule.active ? 'badge-success' : 'badge-secondary'}`}>
+                      {rule.active ? 'ACTIVE' : 'INACTIVE'}
+                    </span>
                   </td>
                   <td>
                     <button className="btn btn-secondary btn-small">Edit</button>

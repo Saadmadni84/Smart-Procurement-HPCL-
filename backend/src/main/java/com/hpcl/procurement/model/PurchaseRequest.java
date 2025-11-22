@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "pr_records")
@@ -43,10 +45,28 @@ public class PurchaseRequest {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    @Column(name = "created_by")
+    private String createdBy;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    @Column(name = "workflow_instance_id")
+    private String workflowInstanceId;
+
+    @OneToMany(mappedBy = "purchaseRequest", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<PurchaseRequestItem> items = new ArrayList<>();
+
     @PrePersist
     public void prePersist() {
         if (createdAt == null) createdAt = LocalDateTime.now();
+        if (updatedAt == null) updatedAt = LocalDateTime.now();
         if (status == null) status = "DRAFT";
+    }
+
+    @PreUpdate
+    public void preUpdate() {
+        updatedAt = LocalDateTime.now();
     }
 
     // Getters and setters
@@ -72,4 +92,12 @@ public class PurchaseRequest {
     public void setJustification(String justification) { this.justification = justification; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public String getCreatedBy() { return createdBy; }
+    public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+    public String getWorkflowInstanceId() { return workflowInstanceId; }
+    public void setWorkflowInstanceId(String workflowInstanceId) { this.workflowInstanceId = workflowInstanceId; }
+    public List<PurchaseRequestItem> getItems() { return items; }
+    public void setItems(List<PurchaseRequestItem> items) { this.items = items; }
 }
